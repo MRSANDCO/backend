@@ -40,6 +40,7 @@ public class User {
     @Field("active")
     private boolean active = true;
 
+    @JsonIgnore
     @Field("directory_path")
     private String directoryPath;
 
@@ -66,7 +67,6 @@ public class User {
         this.fullName = fullName;
         this.email = email;
         this.createdByAdmin = createdByAdmin;
-        this.directoryPath = "uploads/users/" + userId;
     }
 
     // --- Getters and Setters ---

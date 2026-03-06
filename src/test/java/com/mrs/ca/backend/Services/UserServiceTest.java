@@ -9,6 +9,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.mongodb.gridfs.GridFsOperations;
+import org.springframework.data.mongodb.gridfs.GridFsTemplate;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.List;
 import java.util.Optional;
@@ -21,6 +24,9 @@ class UserServiceTest {
 
     @Mock private UserRepository userRepository;
     @Mock private DocumentRepository documentRepository;
+    @Mock private PasswordEncoder passwordEncoder;
+    @Mock private GridFsTemplate gridFsTemplate;
+    @Mock private GridFsOperations gridFsOperations;
 
     @InjectMocks private UserService userService;
 
@@ -42,6 +48,7 @@ class UserServiceTest {
         void success() {
             User user = createTestUser("user01", true);
             when(userRepository.findByUserId("user01")).thenReturn(Optional.of(user));
+            when(passwordEncoder.matches("password", "password")).thenReturn(true);
 
             Optional<User> result = userService.authenticateUser("user01", "password");
 

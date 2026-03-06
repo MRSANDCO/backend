@@ -1,5 +1,7 @@
 package com.mrs.ca.backend.Controllers;
 
+import com.mrs.ca.backend.Config.JwtAuthFilter;
+import com.mrs.ca.backend.Config.JwtUtil;
 import com.mrs.ca.backend.Config.SecurityConfig;
 import com.mrs.ca.backend.Models.Document;
 import com.mrs.ca.backend.Models.User;
@@ -7,9 +9,7 @@ import com.mrs.ca.backend.Services.UserService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
-import org.springframework.boot.autoconfigure.data.mongo.MongoDataAutoConfiguration;
-import org.springframework.boot.autoconfigure.mongo.MongoAutoConfiguration;
+
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -17,17 +17,21 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
 
+import org.springframework.data.mongodb.core.mapping.MongoMappingContext;
+import org.springframework.security.test.context.support.WithMockUser;
+
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(UserController.class)
-@Import(SecurityConfig.class)
-@EnableAutoConfiguration(exclude = {MongoAutoConfiguration.class, MongoDataAutoConfiguration.class})
+@Import({SecurityConfig.class, JwtAuthFilter.class, JwtUtil.class})
+@WithMockUser(username = "user01", roles = "USER")
 class UserControllerTest {
 
     @Autowired private MockMvc mockMvc;
     @MockitoBean private UserService userService;
+    @MockitoBean private MongoMappingContext mongoMappingContext;
 
     // ===================== GET /api/user/{userId}/documents =====================
 
@@ -44,12 +48,12 @@ class UserControllerTest {
     @Test
     @DisplayName("GET /api/user/{userId}/documents — 400 when user not found")
     void getMyDocuments_userNotFound() throws Exception {
-        when(userService.getMyDocuments("ghost"))
-                .thenThrow(new IllegalArgumentException("User 'ghost' not found"));
+        when(userService.getMyDocuments("user01"))
+                .thenThrow(new IllegalArgumentException("User 'user01' not found"));
 
-        mockMvc.perform(get("/api/user/ghost/documents"))
+        mockMvc.perform(get("/api/user/user01/documents"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("User 'ghost' not found"));
+                .andExpect(jsonPath("$.error").value("User 'user01' not found"));
     }
 
     // ===================== GET /api/user/{userId}/documents/{docId} =====================
@@ -97,11 +101,11 @@ class UserControllerTest {
     @Test
     @DisplayName("GET /api/user/{userId}/profile — 400 when user not found")
     void getProfile_notFound() throws Exception {
-        when(userService.getProfile("ghost"))
-                .thenThrow(new IllegalArgumentException("User 'ghost' not found"));
+        when(userService.getProfile("user01"))
+                .thenThrow(new IllegalArgumentException("User 'user01' not found"));
 
-        mockMvc.perform(get("/api/user/ghost/profile"))
+        mockMvc.perform(get("/api/user/user01/profile"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("User 'ghost' not found"));
+                .andExpect(jsonPath("$.error").value("User 'user01' not found"));
     }
 }

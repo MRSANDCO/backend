@@ -26,6 +26,15 @@ class AdminFlowIntegrationTest {
 
     @Autowired private MockMvc mockMvc;
     @Autowired private UserRepository userRepository;
+    @Autowired private com.mrs.ca.backend.Config.JwtUtil jwtUtil;
+
+    private String getAdminToken() {
+        return "Bearer " + jwtUtil.generateToken("admin", "admin");
+    }
+
+    private String getUserToken(String userId) {
+        return "Bearer " + jwtUtil.generateToken(userId, "user");
+    }
 
     @BeforeEach
     void cleanDb() {
@@ -38,6 +47,7 @@ class AdminFlowIntegrationTest {
     void createAndListUser() throws Exception {
         // 1. Create a user via the admin API
         mockMvc.perform(post("/api/admin/users")
+                        .header("Authorization", getAdminToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -55,7 +65,8 @@ class AdminFlowIntegrationTest {
         assertThat(userRepository.findByUserId("integ_user")).isPresent();
 
         // 3. List all users via API
-        mockMvc.perform(get("/api/admin/users"))
+        mockMvc.perform(get("/api/admin/users")
+                        .header("Authorization", getAdminToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].userId").value("integ_user"))
                 .andExpect(jsonPath("$[0].fullName").value("Integration Test User"));
@@ -67,6 +78,7 @@ class AdminFlowIntegrationTest {
     void userLoginFlow() throws Exception {
         // Create user first
         mockMvc.perform(post("/api/admin/users")
+                        .header("Authorization", getAdminToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"userId":"login_user","password":"mypass","fullName":"Login Tester","email":"login@t.com"}
@@ -111,6 +123,7 @@ class AdminFlowIntegrationTest {
     void userProfile() throws Exception {
         // Create user
         mockMvc.perform(post("/api/admin/users")
+                        .header("Authorization", getAdminToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"userId":"profile_user","password":"pass","fullName":"Profile Test","email":"p@t.com","phone":"1111"}
@@ -118,7 +131,8 @@ class AdminFlowIntegrationTest {
                 .andExpect(status().isCreated());
 
         // Fetch profile
-        mockMvc.perform(get("/api/user/profile_user/profile"))
+        mockMvc.perform(get("/api/user/profile_user/profile")
+                        .header("Authorization", getUserToken("profile_user")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.userId").value("profile_user"))
                 .andExpect(jsonPath("$.fullName").value("Profile Test"))
@@ -134,12 +148,14 @@ class AdminFlowIntegrationTest {
                 """;
 
         mockMvc.perform(post("/api/admin/users")
+                        .header("Authorization", getAdminToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isCreated());
 
         // Second attempt should fail
         mockMvc.perform(post("/api/admin/users")
+                        .header("Authorization", getAdminToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isBadRequest())

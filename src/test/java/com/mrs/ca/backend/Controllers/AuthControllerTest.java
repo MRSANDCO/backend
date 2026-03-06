@@ -1,5 +1,7 @@
 package com.mrs.ca.backend.Controllers;
 
+import com.mrs.ca.backend.Config.JwtAuthFilter;
+import com.mrs.ca.backend.Config.JwtUtil;
 import com.mrs.ca.backend.Config.SecurityConfig;
 import com.mrs.ca.backend.Models.User;
 import com.mrs.ca.backend.Services.AdminService;
@@ -7,9 +9,7 @@ import com.mrs.ca.backend.Services.UserService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
-import org.springframework.boot.autoconfigure.data.mongo.MongoDataAutoConfiguration;
-import org.springframework.boot.autoconfigure.mongo.MongoAutoConfiguration;
+
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
@@ -18,18 +18,20 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Optional;
 
+import org.springframework.data.mongodb.core.mapping.MongoMappingContext;
+
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(AuthController.class)
-@Import(SecurityConfig.class)
-@EnableAutoConfiguration(exclude = {MongoAutoConfiguration.class, MongoDataAutoConfiguration.class})
+@Import({SecurityConfig.class, JwtAuthFilter.class, JwtUtil.class})
 class AuthControllerTest {
 
     @Autowired private MockMvc mockMvc;
     @MockitoBean private AdminService adminService;
     @MockitoBean private UserService userService;
+    @MockitoBean private MongoMappingContext mongoMappingContext;
 
     // ===================== Admin Login =====================
 

@@ -3,23 +3,30 @@ package com.mrs.ca.backend.Controllers;
 import com.mrs.ca.backend.Models.Document;
 import com.mrs.ca.backend.Models.User;
 import com.mrs.ca.backend.Services.AdminService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.util.StringUtils;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/admin")
 public class AdminController {
+
+    private static final Logger log = LoggerFactory.getLogger(AdminController.class);
+
+    /** Allowed MIME types for document upload. Extend as needed. */
+    private static final Set<String> ALLOWED_MIME_TYPES = Set.of(
+            "application/pdf",
+            "image/jpeg",
+            "image/png"
+    );
 
     private final AdminService adminService;
 
@@ -86,40 +93,30 @@ public class AdminController {
             @RequestParam(value = "description", required = false) String description,
             @RequestParam(value = "category", required = false) String category) {
 
+        if (file.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "File is required"));
+        }
+
+        String contentType = file.getContentType();
+        if (contentType == null || !ALLOWED_MIME_TYPES.contains(contentType)) {
+            log.warn("Blocked upload with disallowed content-type '{}' for userId={}", contentType, userId);
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "Unsupported file type. Allowed: PDF, JPEG, PNG"));
+        }
+
         try {
-            if (file.isEmpty()) {
-                return ResponseEntity.badRequest().body(Map.of("error", "File is required"));
-            }
-
-            // Save the file to disk under the user's directory (absolute path)
-            Path uploadPath = Paths.get(System.getProperty("user.dir"), "uploads", "users", userId);
-            Files.createDirectories(uploadPath);
-
-            String originalFileName = StringUtils.cleanPath(file.getOriginalFilename() != null ? file.getOriginalFilename() : "unknown.ext");
-            if (originalFileName.contains("..")) {
-                return ResponseEntity.badRequest().body(Map.of("error", "Invalid path sequence in file name"));
-            }
-            
-            String storedFileName = UUID.randomUUID() + "_" + originalFileName;
-            Path filePath = uploadPath.resolve(storedFileName);
-            file.transferTo(filePath.toFile());
-
-            // Save metadata to MongoDB
-            Document document = adminService.uploadDocument(
-                    title, description, originalFileName, filePath.toString(),
-                    file.getContentType(), file.getSize(),
-                    category, userId);
+            Document document = adminService.uploadDocument(file, title, description, category, userId);
 
             return ResponseEntity.status(HttpStatus.CREATED)
                     .body(Map.of("message", "Document uploaded successfully",
                                  "documentId", document.getId(),
-                                 "fileName", originalFileName));
+                                 "fileName", document.getFileName()));
 
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (IOException e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("error", "Failed to save file: " + e.getMessage()));
+                    .body(Map.of("error", "Failed to store file: " + e.getMessage()));
         }
     }
 

@@ -15,7 +15,7 @@ class ModelTests {
     class UserTests {
 
         @Test
-        @DisplayName("constructor should set all fields and auto-generate directoryPath")
+        @DisplayName("constructor should set all fields")
         void constructor() {
             User user = new User("user01", "pass", "John Doe", "j@m.com", "admin");
 
@@ -24,7 +24,6 @@ class ModelTests {
             assertThat(user.getFullName()).isEqualTo("John Doe");
             assertThat(user.getEmail()).isEqualTo("j@m.com");
             assertThat(user.getCreatedByAdmin()).isEqualTo("admin");
-            assertThat(user.getDirectoryPath()).isEqualTo("uploads/users/user01");
             assertThat(user.isActive()).isTrue();
         }
 

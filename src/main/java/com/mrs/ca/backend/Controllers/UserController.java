@@ -3,18 +3,13 @@ package com.mrs.ca.backend.Controllers;
 import com.mrs.ca.backend.Models.Document;
 import com.mrs.ca.backend.Models.User;
 import com.mrs.ca.backend.Services.UserService;
-import org.springframework.core.io.Resource;
-import org.springframework.core.io.UrlResource;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
-import java.net.MalformedURLException;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
@@ -63,37 +58,19 @@ public class UserController {
     }
 
     @GetMapping("/{userId}/documents/{documentId}/download")
-    public ResponseEntity<?> downloadDocument(@PathVariable String userId,
-                                               @PathVariable String documentId) {
-        if (!isAuthorized(userId)) return ResponseEntity.status(403).body(Map.of("error", "Access denied"));
+    public void downloadDocument(@PathVariable String userId,
+                                 @PathVariable String documentId,
+                                 HttpServletResponse response) throws IOException {
+        if (!isAuthorized(userId)) {
+            response.sendError(HttpServletResponse.SC_FORBIDDEN, "Access denied");
+            return;
+        }
         try {
-            Document document = userService.getDocumentById(documentId, userId);
-
-            Path file = Paths.get(document.getFilePath());
-            Resource resource = new UrlResource(file.toUri());
-
-            if (!resource.exists() || !resource.isReadable()) {
-                return ResponseEntity.status(404)
-                        .body(Map.of("error", "File not found on server"));
-            }
-
-            String contentType = document.getFileType() != null
-                    ? document.getFileType()
-                    : "application/octet-stream";
-
-            return ResponseEntity.ok()
-                    .contentType(MediaType.parseMediaType(contentType))
-                    .header(HttpHeaders.CONTENT_DISPOSITION,
-                            "attachment; filename=\"" + document.getFileName() + "\"")
-                    .body(resource);
-
+            userService.streamDocument(documentId, userId, response);
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+            response.sendError(HttpServletResponse.SC_BAD_REQUEST, e.getMessage());
         } catch (SecurityException e) {
-            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
-        } catch (MalformedURLException e) {
-            return ResponseEntity.status(500)
-                    .body(Map.of("error", "Could not read file"));
+            response.sendError(HttpServletResponse.SC_FORBIDDEN, e.getMessage());
         }
     }
 

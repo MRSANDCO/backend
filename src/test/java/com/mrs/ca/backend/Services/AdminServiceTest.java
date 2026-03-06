@@ -2,6 +2,7 @@ package com.mrs.ca.backend.Services;
 
 import com.mrs.ca.backend.Models.*;
 import com.mrs.ca.backend.Repositories.*;
+import org.bson.types.ObjectId;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -10,7 +11,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.mongodb.gridfs.GridFsTemplate;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
+import java.io.IOException;
 import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Optional;
@@ -25,6 +30,8 @@ class AdminServiceTest {
     @Mock private UserRepository userRepository;
     @Mock private DocumentRepository documentRepository;
     @Mock private DocumentAssignmentRepository documentAssignmentRepository;
+    @Mock private PasswordEncoder passwordEncoder;
+    @Mock private GridFsTemplate gridFsTemplate;
 
     @InjectMocks private AdminService adminService;
 
@@ -105,16 +112,19 @@ class AdminServiceTest {
     }
 
     @Test
-    @DisplayName("getAllUsers should delegate to repository")
+    @DisplayName("getAllUsers should delegate to repository with pagination")
     void getAllUsers() {
         User u1 = new User("u1", "p", "A", "a@m.com", "admin");
         User u2 = new User("u2", "p", "B", "b@m.com", "admin");
-        when(userRepository.findAll()).thenReturn(List.of(u1, u2));
+        org.springframework.data.domain.Page<User> page =
+                new org.springframework.data.domain.PageImpl<>(List.of(u1, u2));
+        when(userRepository.findAll(any(org.springframework.data.domain.Pageable.class)))
+                .thenReturn(page);
 
         List<User> users = adminService.getAllUsers();
 
         assertThat(users).hasSize(2);
-        verify(userRepository).findAll();
+        verify(userRepository).findAll(any(org.springframework.data.domain.Pageable.class));
     }
 
     // ===================== Document Management =====================
@@ -124,11 +134,18 @@ class AdminServiceTest {
     class UploadDocument {
 
         @Test
-        @DisplayName("should save document and create assignment")
-        void success() {
+        @DisplayName("should store file in GridFS and save document with gridFsId")
+        void success() throws IOException {
             User user = new User("user01", "pass", "John", "j@m.com", "admin");
             user.setId("uid1");
+
+            MockMultipartFile mockFile = new MockMultipartFile(
+                    "file", "file.pdf", "application/pdf", "PDF content".getBytes());
+
+            ObjectId fakeObjectId = new ObjectId();
             when(userRepository.findByUserId("user01")).thenReturn(Optional.of(user));
+            when(gridFsTemplate.store(any(), eq("file.pdf"), eq("application/pdf")))
+                    .thenReturn(fakeObjectId);
             when(documentRepository.save(any(Document.class))).thenAnswer(inv -> {
                 Document d = inv.getArgument(0);
                 d.setId("docId1");
@@ -137,12 +154,12 @@ class AdminServiceTest {
             when(documentAssignmentRepository.save(any(DocumentAssignment.class)))
                     .thenAnswer(inv -> inv.getArgument(0));
 
-            Document doc = adminService.uploadDocument(
-                    "Title", "Desc", "file.pdf", "/path/file.pdf", "application/pdf",
-                    1024L, "tax", "user01");
+            Document doc = adminService.uploadDocument(mockFile, "Title", "Desc", "tax", "user01");
 
             assertThat(doc.getTitle()).isEqualTo("Title");
+            assertThat(doc.getGridFsId()).isEqualTo(fakeObjectId.toHexString());
             assertThat(doc.getOwnerUser()).isEqualTo(user);
+            verify(gridFsTemplate).store(any(), eq("file.pdf"), eq("application/pdf"));
             verify(documentRepository).save(any(Document.class));
             verify(documentAssignmentRepository).save(any(DocumentAssignment.class));
         }
@@ -152,8 +169,11 @@ class AdminServiceTest {
         void userNotFound() {
             when(userRepository.findByUserId("ghost")).thenReturn(Optional.empty());
 
+            MockMultipartFile mockFile = new MockMultipartFile(
+                    "file", "file.pdf", "application/pdf", "PDF content".getBytes());
+
             assertThatThrownBy(() ->
-                    adminService.uploadDocument("T", "D", "f.pdf", "/p", "pdf", 1L, "cat", "ghost"))
+                    adminService.uploadDocument(mockFile, "T", "D", "cat", "ghost"))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("not found");
         }
@@ -193,17 +213,34 @@ class AdminServiceTest {
     class DeleteDocument {
 
         @Test
-        @DisplayName("should mark document as deleted")
+        @DisplayName("should mark document as deleted and remove GridFS binary")
         void success() {
-            Document doc = new Document("T", "D", "f.pdf", "/p", "pdf", 1L, "cat", "admin", null);
+            Document doc = new Document("T", "D", "f.pdf", null, "pdf", 1L, "cat", "admin", null);
             doc.setId("docId1");
+            doc.setGridFsId(new ObjectId().toHexString());
             when(documentRepository.findById("docId1")).thenReturn(Optional.of(doc));
             when(documentRepository.save(any(Document.class))).thenAnswer(inv -> inv.getArgument(0));
 
             Document result = adminService.deleteDocument("docId1");
 
             assertThat(result.getStatus()).isEqualTo(DocumentStatus.DELETED);
+            verify(gridFsTemplate).delete(any());
             verify(documentRepository).save(doc);
+        }
+
+        @Test
+        @DisplayName("should mark document as deleted even when gridFsId is null")
+        void successWithNoGridFsId() {
+            Document doc = new Document("T", "D", "f.pdf", null, "pdf", 1L, "cat", "admin", null);
+            doc.setId("docId1");
+            // gridFsId is null
+            when(documentRepository.findById("docId1")).thenReturn(Optional.of(doc));
+            when(documentRepository.save(any(Document.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            Document result = adminService.deleteDocument("docId1");
+
+            assertThat(result.getStatus()).isEqualTo(DocumentStatus.DELETED);
+            verify(gridFsTemplate, never()).delete(any());
         }
 
         @Test

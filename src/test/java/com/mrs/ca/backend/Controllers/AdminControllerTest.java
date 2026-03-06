@@ -1,5 +1,7 @@
 package com.mrs.ca.backend.Controllers;
 
+import com.mrs.ca.backend.Config.JwtAuthFilter;
+import com.mrs.ca.backend.Config.JwtUtil;
 import com.mrs.ca.backend.Config.SecurityConfig;
 import com.mrs.ca.backend.Models.Document;
 import com.mrs.ca.backend.Models.User;
@@ -7,16 +9,18 @@ import com.mrs.ca.backend.Services.AdminService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
-import org.springframework.boot.autoconfigure.data.mongo.MongoDataAutoConfiguration;
-import org.springframework.boot.autoconfigure.mongo.MongoAutoConfiguration;
+
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
+
+import org.springframework.data.mongodb.core.mapping.MongoMappingContext;
+import org.springframework.security.test.context.support.WithMockUser;
 
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -24,12 +28,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(AdminController.class)
-@Import(SecurityConfig.class)
-@EnableAutoConfiguration(exclude = {MongoAutoConfiguration.class, MongoDataAutoConfiguration.class})
+@Import({SecurityConfig.class, JwtAuthFilter.class, JwtUtil.class})
+@WithMockUser(roles = "ADMIN")
 class AdminControllerTest {
 
     @Autowired private MockMvc mockMvc;
     @MockitoBean private AdminService adminService;
+    @MockitoBean private MongoMappingContext mongoMappingContext;
 
     // ===================== POST /api/admin/users =====================
 
@@ -92,6 +97,45 @@ class AdminControllerTest {
                 .andExpect(jsonPath("$[0].userId").value("user01"));
     }
 
+    // ===================== POST /api/admin/users/{userId}/documents =====================
+
+    @Test
+    @DisplayName("POST /api/admin/users/{userId}/documents — 201 on success")
+    void uploadDocument_success() throws Exception {
+        Document doc = new Document("Tax Return", "Desc", "tax.pdf", null, "application/pdf", 1024L, "tax", "admin", null);
+        doc.setId("docId1");
+        doc.setGridFsId("someObjectId");
+
+        MockMultipartFile mockFile = new MockMultipartFile(
+                "file", "tax.pdf", "application/pdf", "PDF content".getBytes());
+
+        when(adminService.uploadDocument(any(), eq("Tax Return"), eq("Desc"), eq("tax"), eq("user01")))
+                .thenReturn(doc);
+
+        mockMvc.perform(multipart("/api/admin/users/user01/documents")
+                        .file(mockFile)
+                        .param("title", "Tax Return")
+                        .param("description", "Desc")
+                        .param("category", "tax"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.message").value("Document uploaded successfully"))
+                .andExpect(jsonPath("$.documentId").value("docId1"))
+                .andExpect(jsonPath("$.fileName").value("tax.pdf"));
+    }
+
+    @Test
+    @DisplayName("POST /api/admin/users/{userId}/documents — 400 when file empty")
+    void uploadDocument_emptyFile() throws Exception {
+        MockMultipartFile emptyFile = new MockMultipartFile(
+                "file", "empty.pdf", "application/pdf", new byte[0]);
+
+        mockMvc.perform(multipart("/api/admin/users/user01/documents")
+                        .file(emptyFile)
+                        .param("title", "title"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("File is required"));
+    }
+
     // ===================== GET /api/admin/documents =====================
 
     @Test
@@ -109,7 +153,7 @@ class AdminControllerTest {
     @Test
     @DisplayName("DELETE /api/admin/documents/{id} — 200 on success")
     void deleteDocument_success() throws Exception {
-        Document doc = new Document("T", "D", "f.pdf", "/p", "pdf", 1L, "cat", "admin", null);
+        Document doc = new Document("T", "D", "f.pdf", null, "pdf", 1L, "cat", "admin", null);
         doc.setId("docId1");
         doc.markDeleted();
         when(adminService.deleteDocument("docId1")).thenReturn(doc);

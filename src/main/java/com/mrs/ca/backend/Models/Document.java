@@ -28,6 +28,9 @@ public class Document {
     @Field("file_path")
     private String filePath;
 
+    @Field("grid_fs_id")
+    private String gridFsId;
+
     @Field("file_type")
     private String fileType;
 
@@ -139,6 +142,14 @@ public class Document {
 
     public void setFilePath(String filePath) {
         this.filePath = filePath;
+    }
+
+    public String getGridFsId() {
+        return gridFsId;
+    }
+
+    public void setGridFsId(String gridFsId) {
+        this.gridFsId = gridFsId;
     }
 
     public String getFileType() {
