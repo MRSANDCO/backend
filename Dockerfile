@@ -24,9 +24,6 @@ RUN mkdir -p target/dependency && (cd target/dependency; jar -xf /workspace/app/
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 
-# Add a volume pointing to /tmp (Spring Boot default temp dir)
-VOLUME /tmp
-
 # Argument for port (defaults to 8080)
 ARG PORT=8080
 ENV PORT=${PORT}
