@@ -83,6 +83,32 @@ public class AdminController {
         }
     }
 
+    @PutMapping("/users/{userId}")
+    public ResponseEntity<?> updateUser(@PathVariable String userId,
+                                        @RequestBody Map<String, String> request) {
+        try {
+            User user = adminService.updateUser(userId, 
+                                                request.get("fullName"), 
+                                                request.get("email"), 
+                                                request.get("phone"));
+            return ResponseEntity.ok(Map.of("message", "User updated successfully",
+                                            "userId", user.getUserId()));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @DeleteMapping("/users/{userId}")
+    public ResponseEntity<?> deleteUser(@PathVariable String userId) {
+        try {
+            adminService.deleteUser(userId);
+            return ResponseEntity.ok(Map.of("message", "User deleted successfully",
+                                            "userId", userId));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
     // ===================== Document Management =====================
 
     @PostMapping("/users/{userId}/documents")
@@ -134,9 +160,9 @@ public class AdminController {
     @DeleteMapping("/documents/{documentId}")
     public ResponseEntity<?> deleteDocument(@PathVariable String documentId) {
         try {
-            Document document = adminService.deleteDocument(documentId);
+            adminService.deleteDocument(documentId);
             return ResponseEntity.ok(Map.of("message", "Document deleted",
-                                            "documentId", document.getId()));
+                                            "documentId", documentId));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }

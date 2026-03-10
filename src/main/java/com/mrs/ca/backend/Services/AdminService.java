@@ -111,6 +111,55 @@ public class AdminService {
         return userRepository.save(user);
     }
 
+    /**
+     * Update a user's details (fullName, email, phone).
+     */
+    public User updateUser(String userId, String fullName, String email, String phone) {
+        User user = userRepository.findByUserId(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User '" + userId + "' not found"));
+        
+        if (fullName != null) user.setFullName(fullName);
+        if (email != null) user.setEmail(email);
+        if (phone != null) user.setPhone(phone);
+        
+        log.info("[UPDATE] User '{}' details updated by admin.", userId);
+        return userRepository.save(user);
+    }
+
+    /**
+     * Delete a user completely, including their assigned documents and GridFS files.
+     */
+    public void deleteUser(String userId) {
+        User user = userRepository.findByUserId(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User '" + userId + "' not found"));
+
+        // 1. Find all documents owned by the user
+        List<Document> documents = documentRepository.findByOwnerUserId(user.getId());
+        
+        // 2. Delete the actual files from GridFS and delete the assignments
+        for (Document doc : documents) {
+            if (doc.getGridFsId() != null && !doc.getGridFsId().isBlank()) {
+                gridFsTemplate.delete(
+                        new Query(Criteria.where("_id").is(new ObjectId(doc.getGridFsId())))
+                );
+            }
+            List<DocumentAssignment> assignments = documentAssignmentRepository.findByDocumentId(doc.getId());
+            documentAssignmentRepository.deleteAll(assignments);
+        }
+        
+        // 3. Delete the document records
+        documentRepository.deleteAll(documents);
+        
+        // 4. Delete the user assignments just in case any were left
+        List<DocumentAssignment> userAssignments = documentAssignmentRepository.findByUserId(user.getId());
+        documentAssignmentRepository.deleteAll(userAssignments);
+
+        // 5. Delete the user
+        userRepository.delete(user);
+        
+        log.info("[DELETE] User '{}' and all their documents were deleted.", userId);
+    }
+
     // ===================== Document Management =====================
 
     /**
@@ -151,24 +200,28 @@ public class AdminService {
 
     /**
      * Get documents — all docs or filtered by userId.
+     * Excludes soft-deleted documents.
      */
     public List<Document> getDocuments(String userId) {
+        List<Document> docs;
         if (userId != null && !userId.isBlank()) {
             User user = userRepository.findByUserId(userId)
                     .orElseThrow(() -> new IllegalArgumentException("User '" + userId + "' not found"));
-            return documentRepository.findByOwnerUserId(user.getId());
+            docs = documentRepository.findByOwnerUserId(user.getId());
+        } else {
+            docs = documentRepository.findAll();
         }
-        return documentRepository.findAll();
+        return docs.stream().filter(d -> d.getStatus() != DocumentStatus.DELETED).toList();
     }
 
     /**
-     * Soft-delete a document and remove its GridFS binary.
+     * Hard-delete a document: removes GridFS binary, assignments, and the document record.
      */
-    public Document deleteDocument(String documentId) {
+    public void deleteDocument(String documentId) {
         Document document = documentRepository.findById(documentId)
                 .orElseThrow(() -> new IllegalArgumentException("Document not found"));
 
-        // Remove the stored binary from GridFS
+        // 1. Remove the stored binary from GridFS
         if (document.getGridFsId() != null && !document.getGridFsId().isBlank()) {
             gridFsTemplate.delete(
                     new Query(Criteria.where("_id").is(new ObjectId(document.getGridFsId())))
@@ -177,7 +230,12 @@ public class AdminService {
                      document.getGridFsId(), documentId);
         }
 
-        document.markDeleted();
-        return documentRepository.save(document);
+        // 2. Remove related assignments
+        List<DocumentAssignment> assignments = documentAssignmentRepository.findByDocumentId(documentId);
+        documentAssignmentRepository.deleteAll(assignments);
+
+        // 3. Delete the document record
+        documentRepository.delete(document);
+        log.info("[DELETE] Document '{}' and its assignments permanently deleted.", documentId);
     }
 }
