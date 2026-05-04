@@ -11,6 +11,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.mongodb.gridfs.GridFsOperations;
 import org.springframework.data.mongodb.gridfs.GridFsTemplate;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -32,6 +33,7 @@ class AdminServiceTest {
     @Mock private DocumentAssignmentRepository documentAssignmentRepository;
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private GridFsTemplate gridFsTemplate;
+    @Mock private GridFsOperations gridFsOperations;
 
     @InjectMocks private AdminService adminService;
 
@@ -213,34 +215,33 @@ class AdminServiceTest {
     class DeleteDocument {
 
         @Test
-        @DisplayName("should mark document as deleted and remove GridFS binary")
+        @DisplayName("should hard-delete document and remove GridFS binary")
         void success() {
             Document doc = new Document("T", "D", "f.pdf", null, "pdf", 1L, "cat", "admin", null);
             doc.setId("docId1");
             doc.setGridFsId(new ObjectId().toHexString());
             when(documentRepository.findById("docId1")).thenReturn(Optional.of(doc));
-            when(documentRepository.save(any(Document.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(documentAssignmentRepository.findByDocumentId("docId1")).thenReturn(List.of());
 
-            Document result = adminService.deleteDocument("docId1");
+            adminService.deleteDocument("docId1");
 
-            assertThat(result.getStatus()).isEqualTo(DocumentStatus.DELETED);
             verify(gridFsTemplate).delete(any());
-            verify(documentRepository).save(doc);
+            verify(documentRepository).delete(doc);
         }
 
         @Test
-        @DisplayName("should mark document as deleted even when gridFsId is null")
+        @DisplayName("should hard-delete document even when gridFsId is null")
         void successWithNoGridFsId() {
             Document doc = new Document("T", "D", "f.pdf", null, "pdf", 1L, "cat", "admin", null);
             doc.setId("docId1");
             // gridFsId is null
             when(documentRepository.findById("docId1")).thenReturn(Optional.of(doc));
-            when(documentRepository.save(any(Document.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(documentAssignmentRepository.findByDocumentId("docId1")).thenReturn(List.of());
 
-            Document result = adminService.deleteDocument("docId1");
+            adminService.deleteDocument("docId1");
 
-            assertThat(result.getStatus()).isEqualTo(DocumentStatus.DELETED);
             verify(gridFsTemplate, never()).delete(any());
+            verify(documentRepository).delete(doc);
         }
 
         @Test

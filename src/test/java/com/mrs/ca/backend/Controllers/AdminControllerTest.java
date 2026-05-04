@@ -153,10 +153,7 @@ class AdminControllerTest {
     @Test
     @DisplayName("DELETE /api/admin/documents/{id} — 200 on success")
     void deleteDocument_success() throws Exception {
-        Document doc = new Document("T", "D", "f.pdf", null, "pdf", 1L, "cat", "admin", null);
-        doc.setId("docId1");
-        doc.markDeleted();
-        when(adminService.deleteDocument("docId1")).thenReturn(doc);
+        doNothing().when(adminService).deleteDocument("docId1");
 
         mockMvc.perform(delete("/api/admin/documents/docId1"))
                 .andExpect(status().isOk())
@@ -167,8 +164,8 @@ class AdminControllerTest {
     @Test
     @DisplayName("DELETE /api/admin/documents/{id} — 400 when not found")
     void deleteDocument_notFound() throws Exception {
-        when(adminService.deleteDocument("missing"))
-                .thenThrow(new IllegalArgumentException("Document not found"));
+        doThrow(new IllegalArgumentException("Document not found"))
+                .when(adminService).deleteDocument("missing");
 
         mockMvc.perform(delete("/api/admin/documents/missing"))
                 .andExpect(status().isBadRequest())

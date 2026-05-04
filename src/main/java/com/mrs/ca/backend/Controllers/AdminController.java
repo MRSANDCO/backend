@@ -3,6 +3,7 @@ package com.mrs.ca.backend.Controllers;
 import com.mrs.ca.backend.Models.Document;
 import com.mrs.ca.backend.Models.User;
 import com.mrs.ca.backend.Services.AdminService;
+import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -165,6 +166,16 @@ public class AdminController {
                                             "documentId", documentId));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/documents/{documentId}/download")
+    public void downloadDocument(@PathVariable String documentId,
+                                 HttpServletResponse response) throws IOException {
+        try {
+            adminService.streamDocumentForAdmin(documentId, response);
+        } catch (IllegalArgumentException e) {
+            response.sendError(HttpServletResponse.SC_BAD_REQUEST, e.getMessage());
         }
     }
 }
