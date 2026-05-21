@@ -39,19 +39,22 @@ public class AdminService {
     private final PasswordEncoder passwordEncoder;
     private final GridFsTemplate gridFsTemplate;
     private final GridFsOperations gridFsOperations;
+    private final DriveLinkService driveLinkService;
 
     public AdminService(UserRepository userRepository,
                         DocumentRepository documentRepository,
                         DocumentAssignmentRepository documentAssignmentRepository,
                         PasswordEncoder passwordEncoder,
                         GridFsTemplate gridFsTemplate,
-                        GridFsOperations gridFsOperations) {
+                        GridFsOperations gridFsOperations,
+                        DriveLinkService driveLinkService) {
         this.userRepository = userRepository;
         this.documentRepository = documentRepository;
         this.documentAssignmentRepository = documentAssignmentRepository;
         this.passwordEncoder = passwordEncoder;
         this.gridFsTemplate = gridFsTemplate;
         this.gridFsOperations = gridFsOperations;
+        this.driveLinkService = driveLinkService;
     }
 
     // ===================== Authentication =====================
@@ -155,6 +158,8 @@ public class AdminService {
         
         // 3. Delete the document records
         documentRepository.deleteAll(documents);
+        // Also delete all Drive links shared with this user
+driveLinkService.deleteAllLinksForUser(userId);
         
         // 4. Delete the user assignments just in case any were left
         List<DocumentAssignment> userAssignments = documentAssignmentRepository.findByUserId(user.getId());
