@@ -71,6 +71,36 @@ public class DriveLinkService {
         log.info("[DRIVE] Link id='{}' deleted.", id);
     }
 
+    // Admin: update an existing Drive link
+    public DriveLink updateDriveLink(String id, String userId, String year, String driveUrl,
+                                     String title, String description) {
+        DriveLink link = driveLinkRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Drive link not found"));
+
+        if (userId == null || userId.isBlank()) {
+            throw new IllegalArgumentException("User ID is required");
+        }
+        userRepository.findByUserId(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User '" + userId + "' not found"));
+
+        if (driveUrl == null || driveUrl.isBlank()) {
+            throw new IllegalArgumentException("Drive URL is required");
+        }
+        if (year == null || year.isBlank()) {
+            throw new IllegalArgumentException("Year is required");
+        }
+
+        link.setUserId(userId);
+        link.setYear(year);
+        link.setDriveUrl(driveUrl);
+        link.setTitle(title);
+        link.setDescription(description);
+
+        DriveLink saved = driveLinkRepository.save(link);
+        log.info("[DRIVE] Link id='{}' updated.", id);
+        return saved;
+    }
+
     // Called when a user is deleted — clean up their links too
     public void deleteAllLinksForUser(String userId) {
         driveLinkRepository.deleteByUserId(userId);

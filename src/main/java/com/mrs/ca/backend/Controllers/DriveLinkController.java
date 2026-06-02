@@ -75,6 +75,29 @@ public class DriveLinkController {
         }
     }
 
+    // PUT /api/admin/drive-links/{id} — edit/update an existing Drive link
+    @PutMapping("/api/admin/drive-links/{id}")
+    public ResponseEntity<?> updateDriveLink(@PathVariable String id, @RequestBody Map<String, String> request) {
+        try {
+            String userId      = request.get("userId");
+            String year        = request.get("year");
+            String driveUrl    = request.get("driveUrl");
+            String title       = request.get("title");
+            String description = request.get("description");
+
+            DriveLink updatedLink = driveLinkService.updateDriveLink(
+                    id, userId, year, driveUrl, title, description);
+
+            return ResponseEntity.ok(Map.of(
+                    "message", "Drive link updated successfully",
+                    "id", updatedLink.getId(),
+                    "userId", updatedLink.getUserId()
+            ));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
     // ===================== Client Routes =====================
 
     // GET /api/user/{userId}/drive-links — client sees only their links
