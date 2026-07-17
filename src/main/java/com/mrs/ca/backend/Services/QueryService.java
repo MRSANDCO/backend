@@ -32,15 +32,18 @@ public class QueryService {
     private final UserRepository userRepository;
     private final GridFsTemplate gridFsTemplate;
     private final GridFsOperations gridFsOperations;
+    private final EmailService emailService;
 
     public QueryService(QueryRepository queryRepository,
                         UserRepository userRepository,
                         GridFsTemplate gridFsTemplate,
-                        GridFsOperations gridFsOperations) {
+                        GridFsOperations gridFsOperations,
+                        EmailService emailService) {
         this.queryRepository = queryRepository;
         this.userRepository = userRepository;
         this.gridFsTemplate = gridFsTemplate;
         this.gridFsOperations = gridFsOperations;
+        this.emailService = emailService;
     }
 
     // ===================== Admin Operations =====================
@@ -61,6 +64,10 @@ public class QueryService {
 
         Query saved = queryRepository.save(query);
         log.info("[QUERY] Text query '{}' raised by admin for userId='{}'", subject, targetUserId);
+
+        // Send email notification to the client (async — failure does not affect the response)
+        emailService.sendQueryNotification(targetUser, saved);
+
         return saved;
     }
 
@@ -93,6 +100,10 @@ public class QueryService {
         Query saved = queryRepository.save(query);
         log.info("[QUERY] PDF query '{}' raised by admin for userId='{}', gridFsId='{}'",
                 subject, targetUserId, gridFsObjectId.toHexString());
+
+        // Send email notification to the client (async — failure does not affect the response)
+        emailService.sendQueryNotification(targetUser, saved);
+
         return saved;
     }
 
