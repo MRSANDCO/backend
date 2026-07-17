@@ -39,3 +39,25 @@ dependencies {
 tasks.named('test') {
 	useJUnitPlatform()
 }
+
+bootRun {
+	if (file(".env").exists()) {
+		file(".env").readLines().each { line ->
+			line = line.trim()
+			if (!line.isEmpty() && !line.startsWith("#")) {
+				int pos = line.indexOf("=")
+				if (pos > 0) {
+					String key = line.substring(0, pos).trim()
+					String val = line.substring(pos + 1).trim()
+					// Remove surrounding quotes if present
+					if (val.startsWith("\"") && val.endsWith("\"")) {
+						val = val.substring(1, val.length() - 1)
+					} else if (val.startsWith("'") && val.endsWith("'")) {
+						val = val.substring(1, val.length() - 1)
+					}
+					environment key, val
+				}
+			}
+		}
+	}
+}
