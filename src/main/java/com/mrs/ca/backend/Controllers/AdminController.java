@@ -301,4 +301,23 @@ public class AdminController {
             response.sendError(HttpServletResponse.SC_BAD_REQUEST, e.getMessage());
         }
     }
+
+    /**
+     * Test SMTP email configuration.
+     * Body: { "email": "recipient@example.com" }
+     */
+    @PostMapping("/queries/test-email")
+    public ResponseEntity<?> testEmail(@RequestBody Map<String, String> request) {
+        String email = request.get("email");
+        if (email == null || email.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "recipient email is required"));
+        }
+        String result = queryService.testEmailConfiguration(email);
+        if (result.startsWith("Success")) {
+            return ResponseEntity.ok(Map.of("message", result));
+        } else {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", result));
+        }
+    }
 }

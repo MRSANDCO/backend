@@ -29,8 +29,8 @@ public class EmailService {
     @Value("${app.frontend.url:http://localhost:3000}")
     private String frontendUrl;
 
-    public EmailService(JavaMailSender mailSender) {
-        this.mailSender = mailSender;
+    public EmailService(org.springframework.beans.factory.ObjectProvider<JavaMailSender> mailSenderProvider) {
+        this.mailSender = mailSenderProvider.getIfAvailable();
     }
 
     /**
@@ -43,6 +43,11 @@ public class EmailService {
         if (targetUser.getEmail() == null || targetUser.getEmail().isBlank()) {
             log.warn("[EMAIL] Skipping notification for userId='{}' — no email address on record.",
                     targetUser.getUserId());
+            return;
+        }
+
+        if (mailSender == null) {
+            log.warn("[EMAIL] JavaMailSender is not initialized. Please verify spring.mail properties are configured. Skipping email notification.");
             return;
         }
 
@@ -248,6 +253,29 @@ public class EmailService {
                 loginUrl,
                 loginUrl
         );
+    }
+
+    public String sendTestEmail(String recipient) {
+        if (mailSender == null) {
+            return "Failure: JavaMailSender is not initialized (null). Please check spring.mail property names.";
+        }
+        if (senderEmail == null || senderEmail.isBlank()) {
+            return "Failure: MAIL_USERNAME is not configured (blank or null).";
+        }
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setFrom(senderEmail, "MRS & Co. (Test Connection)");
+            helper.setTo(recipient);
+            helper.setSubject("📋 Test Connection from MRS & Co. Backend");
+            helper.setText("<h3>SMTP test configuration: Success!</h3><p>If you see this, the Spring Mail configuration is working perfectly.</p>", true);
+            mailSender.send(message);
+            return "Success: Email sent successfully from " + senderEmail + " to " + recipient;
+        } catch (Exception e) {
+            java.io.StringWriter sw = new java.io.StringWriter();
+            e.printStackTrace(new java.io.PrintWriter(sw));
+            return "Failure: " + e.getMessage() + "\n\nStacktrace:\n" + sw.toString();
+        }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

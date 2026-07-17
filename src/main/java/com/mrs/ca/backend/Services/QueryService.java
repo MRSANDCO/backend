@@ -266,4 +266,9 @@ public class QueryService {
             throw new SecurityException("Access denied: query does not belong to this user");
         }
     }
+
+    public String testEmailConfiguration(String recipient) {
+        return emailService.sendTestEmail(recipient);
+    }
 }
+
