@@ -1,8 +1,10 @@
 package com.mrs.ca.backend.Controllers;
 
 import com.mrs.ca.backend.Models.Document;
+import com.mrs.ca.backend.Models.Query;
 import com.mrs.ca.backend.Models.User;
 import com.mrs.ca.backend.Services.AdminService;
+import com.mrs.ca.backend.Services.QueryService;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,9 +32,11 @@ public class AdminController {
     );
 
     private final AdminService adminService;
+    private final QueryService queryService;
 
-    public AdminController(AdminService adminService) {
+    public AdminController(AdminService adminService, QueryService queryService) {
         this.adminService = adminService;
+        this.queryService = queryService;
     }
 
     // ===================== User Management =====================
@@ -174,6 +178,125 @@ public class AdminController {
                                  HttpServletResponse response) throws IOException {
         try {
             adminService.streamDocumentForAdmin(documentId, response);
+        } catch (IllegalArgumentException e) {
+            response.sendError(HttpServletResponse.SC_BAD_REQUEST, e.getMessage());
+        }
+    }
+
+    // ===================== Query Management =====================
+
+    /**
+     * Raise a TEXT query to a specific user/company.
+     * Body: { "userId": "...", "subject": "...", "message": "..." }
+     */
+    @PostMapping("/queries/text")
+    public ResponseEntity<?> raiseTextQuery(@RequestBody Map<String, String> request) {
+        String userId = request.get("userId");
+        String subject = request.get("subject");
+        String message = request.get("message");
+
+        if (userId == null || userId.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "userId is required"));
+        }
+        if (subject == null || subject.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "subject is required"));
+        }
+        if (message == null || message.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "message is required for text queries"));
+        }
+
+        try {
+            Query query = queryService.raiseTextQuery(userId, subject, message);
+            return ResponseEntity.status(HttpStatus.CREATED)
+                    .body(Map.of(
+                            "message", "Query raised successfully",
+                            "queryId", query.getId(),
+                            "type", query.getType().name(),
+                            "status", query.getStatus().name()));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Raise a PDF query to a specific user/company.
+     * Multipart form: userId, subject, file (PDF only).
+     */
+    @PostMapping("/queries/pdf")
+    public ResponseEntity<?> raisePdfQuery(
+            @RequestParam("userId") String userId,
+            @RequestParam("subject") String subject,
+            @RequestParam("file") MultipartFile file) {
+
+        if (userId == null || userId.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "userId is required"));
+        }
+        if (subject == null || subject.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "subject is required"));
+        }
+        if (file.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "file is required"));
+        }
+
+        String contentType = file.getContentType();
+        if (!"application/pdf".equals(contentType)) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "Only PDF files are allowed for PDF queries"));
+        }
+
+        try {
+            Query query = queryService.raisePdfQuery(userId, subject, file);
+            return ResponseEntity.status(HttpStatus.CREATED)
+                    .body(Map.of(
+                            "message", "PDF query raised successfully",
+                            "queryId", query.getId(),
+                            "type", query.getType().name(),
+                            "fileName", query.getFileName(),
+                            "status", query.getStatus().name()));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (IOException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to store PDF: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * List all queries raised by admin.
+     * Optional query param: ?userId= to filter by company/user.
+     */
+    @GetMapping("/queries")
+    public ResponseEntity<?> getAllQueries(
+            @RequestParam(value = "userId", required = false) String userId) {
+        try {
+            List<Query> queries = queryService.getAllQueries(userId);
+            return ResponseEntity.ok(queries);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Delete a query (removes PDF from GridFS if present).
+     */
+    @DeleteMapping("/queries/{queryId}")
+    public ResponseEntity<?> deleteQuery(@PathVariable String queryId) {
+        try {
+            queryService.deleteQuery(queryId);
+            return ResponseEntity.ok(Map.of("message", "Query deleted", "queryId", queryId));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Admin downloads the PDF attachment of a query.
+     */
+    @GetMapping("/queries/{queryId}/download")
+    public void downloadQueryFile(@PathVariable String queryId,
+                                  HttpServletResponse response) throws IOException {
+        try {
+            queryService.streamQueryFileForAdmin(queryId, response);
         } catch (IllegalArgumentException e) {
             response.sendError(HttpServletResponse.SC_BAD_REQUEST, e.getMessage());
         }
