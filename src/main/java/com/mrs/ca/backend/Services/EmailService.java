@@ -2,17 +2,18 @@ package com.mrs.ca.backend.Services;
 
 import com.mrs.ca.backend.Models.Query;
 import com.mrs.ca.backend.Models.User;
-import jakarta.mail.MessagingException;
-import jakarta.mail.internet.MimeMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.Map;
 
 @Service
 public class EmailService {
@@ -20,21 +21,24 @@ public class EmailService {
     private static final Logger log = LoggerFactory.getLogger(EmailService.class);
     private static final DateTimeFormatter DATE_FMT =
             DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a");
+    private static final String RESEND_API_URL = "https://api.resend.com/emails";
 
-    private final JavaMailSender mailSender;
+    @Value("${app.resend.api-key:}")
+    private String resendApiKey;
 
-    @Value("${spring.mail.username:}")
-    private String senderEmail;
+    @Value("${app.resend.from-email:onboarding@resend.dev}")
+    private String fromEmail;
+
+    @Value("${app.resend.from-name:MRS & Co. — Chartered Accountants}")
+    private String fromName;
 
     @Value("${app.frontend.url:http://localhost:3000}")
     private String frontendUrl;
 
-    public EmailService(org.springframework.beans.factory.ObjectProvider<JavaMailSender> mailSenderProvider) {
-        this.mailSender = mailSenderProvider.getIfAvailable();
-    }
+    private final RestClient restClient = RestClient.create();
 
     /**
-     * Sends a query-raised notification email to the target client.
+     * Sends a query-raised notification email to the target client via Resend.
      * Called asynchronously so it never blocks the HTTP response.
      * All exceptions are caught and logged — email failure never breaks query creation.
      */
@@ -46,34 +50,49 @@ public class EmailService {
             return;
         }
 
-        if (mailSender == null) {
-            log.warn("[EMAIL] JavaMailSender is not initialized. Please verify spring.mail properties are configured. Skipping email notification.");
-            return;
-        }
-
-        if (senderEmail == null || senderEmail.isBlank()) {
-            log.warn("[EMAIL] MAIL_USERNAME is not configured. Skipping email notification.");
+        if (resendApiKey == null || resendApiKey.isBlank()) {
+            log.warn("[EMAIL] RESEND_API_KEY is not configured. Skipping email notification.");
             return;
         }
 
         try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            String subject = "📋 New Query Raised: " + query.getSubject();
+            String html = buildHtmlEmail(targetUser, query);
 
-            helper.setFrom(senderEmail, "MRS & Co. — Chartered Accountants");
-            helper.setTo(targetUser.getEmail());
-            helper.setSubject("📋 New Query Raised: " + query.getSubject());
-            helper.setText(buildHtmlEmail(targetUser, query), true);
+            sendViaResend(targetUser.getEmail(), subject, html);
 
-            mailSender.send(message);
             log.info("[EMAIL] Query notification sent to '{}' for queryId='{}'",
                     targetUser.getEmail(), query.getId());
 
-        } catch (MessagingException e) {
+        } catch (Exception e) {
             log.error("[EMAIL] Failed to send query notification to '{}': {}",
                     targetUser.getEmail(), e.getMessage(), e);
-        } catch (Exception e) {
-            log.error("[EMAIL] Unexpected error sending notification: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Low-level call to the Resend API. Throws on failure — caller decides how to handle it.
+     */
+    private void sendViaResend(String to, String subject, String html) {
+        Map<String, Object> payload = Map.of(
+                "from", fromName + " <" + fromEmail + ">",
+                "to", List.of(to),
+                "subject", subject,
+                "html", html
+        );
+
+        try {
+            restClient.post()
+                    .uri(RESEND_API_URL)
+                    .header("Authorization", "Bearer " + resendApiKey)
+                    .header("Content-Type", "application/json")
+                    .body(payload)
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RestClientResponseException e) {
+            HttpStatusCode status = e.getStatusCode();
+            String body = e.getResponseBodyAsString();
+            throw new RuntimeException("Resend API call failed [" + status + "]: " + body, e);
         }
     }
 
@@ -226,7 +245,7 @@ public class EmailService {
                           <td style="background:#f8fafc;border-top:1px solid #e2e8f0;
                                      padding:20px 40px;text-align:center;">
                             <p style="margin:0 0 4px;font-size:12px;color:#64748b;">
-                              This is an automated notification from <strong>MRS &amp; Co. Chartered Accountants</strong>.
+                              This is an automated notification from <strong>MRS & Co. Chartered Accountants</strong>.
                             </p>
                             <p style="margin:0;font-size:11px;color:#94a3b8;">
                               Please do not reply to this email. Log in to your dashboard to respond.
@@ -256,21 +275,16 @@ public class EmailService {
     }
 
     public String sendTestEmail(String recipient) {
-        if (mailSender == null) {
-            return "Failure: JavaMailSender is not initialized (null). Please check spring.mail property names.";
-        }
-        if (senderEmail == null || senderEmail.isBlank()) {
-            return "Failure: MAIL_USERNAME is not configured (blank or null).";
+        if (resendApiKey == null || resendApiKey.isBlank()) {
+            return "Failure: RESEND_API_KEY is not configured (blank or null).";
         }
         try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-            helper.setFrom(senderEmail, "MRS & Co. (Test Connection)");
-            helper.setTo(recipient);
-            helper.setSubject("📋 Test Connection from MRS & Co. Backend");
-            helper.setText("<h3>SMTP test configuration: Success!</h3><p>If you see this, the Spring Mail configuration is working perfectly.</p>", true);
-            mailSender.send(message);
-            return "Success: Email sent successfully from " + senderEmail + " to " + recipient;
+            sendViaResend(
+                    recipient,
+                    "📋 Test Connection from MRS & Co. Backend",
+                    "<h3>Resend configuration: Success!</h3><p>If you see this, the Resend integration is working perfectly.</p>"
+            );
+            return "Success: Email sent successfully from " + fromEmail + " to " + recipient;
         } catch (Exception e) {
             java.io.StringWriter sw = new java.io.StringWriter();
             e.printStackTrace(new java.io.PrintWriter(sw));
