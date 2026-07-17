@@ -26,6 +26,18 @@ public class EmailService {
     @Value("${app.resend.api-key:}")
     private String resendApiKey;
 
+    @jakarta.annotation.PostConstruct
+public void logKeyDebug() {
+    if (resendApiKey == null || resendApiKey.isBlank()) {
+        log.warn("[EMAIL-DEBUG] resendApiKey is NULL or BLANK");
+    } else {
+        String masked = resendApiKey.length() > 10
+                ? resendApiKey.substring(0, 6) + "..." + resendApiKey.substring(resendApiKey.length() - 4)
+                : "TOO_SHORT:" + resendApiKey;
+        log.warn("[EMAIL-DEBUG] resendApiKey loaded, length={}, value={}", resendApiKey.length(), masked);
+    }
+}
+
     @Value("${app.resend.from-email:onboarding@resend.dev}")
     private String fromEmail;
 
