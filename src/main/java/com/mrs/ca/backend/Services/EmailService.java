@@ -41,7 +41,7 @@ public void logKeyDebug() {
     @Value("${app.resend.from-email:onboarding@resend.dev}")
     private String fromEmail;
 
-    @Value("${app.resend.from-name:MRS & Co. — Chartered Accountants}")
+    @Value("${app.resend.from-name:MRS & Co. Chartered Accountants}")
     private String fromName;
 
     @Value("${app.frontend.url:http://localhost:3000}")
@@ -132,7 +132,7 @@ public void logKeyDebug() {
                 <head>
                   <meta charset="UTF-8"/>
                   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-                  <title>New Query from MRS &amp; Co.</title>
+                  <title>New Query from MRS &amp; Co. Chartered Accountants</title>
                 </head>
                 <body style="margin:0;padding:0;background:#f1f5f9;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
 
@@ -160,7 +160,7 @@ public void logKeyDebug() {
                             <h1 style="margin:0 0 4px;color:#ffffff;font-size:22px;font-weight:700;
                                        letter-spacing:-0.3px;">New Query Raised</h1>
                             <p style="margin:0;color:#93c5fd;font-size:13px;letter-spacing:0.04em;">
-                              MRS &amp; Co. — Chartered Accountants
+                              MRS &amp; Co. Chartered Accountants
                             </p>
                           </td>
                         </tr>
@@ -173,7 +173,7 @@ public void logKeyDebug() {
                               Dear <strong>%s</strong>,
                             </p>
                             <p style="font-size:14px;color:#4b5563;line-height:1.7;margin:0 0 28px;">
-                              Our team at <strong>MRS &amp; Co.</strong> has raised a new query
+                              Our team at <strong>MRS &amp; Co. Chartered Accountants</strong> has raised a new query
                               on your account. Please log in to your dashboard to view the
                               full details and respond at your earliest convenience.
                             </p>
@@ -257,7 +257,7 @@ public void logKeyDebug() {
                           <td style="background:#f8fafc;border-top:1px solid #e2e8f0;
                                      padding:20px 40px;text-align:center;">
                             <p style="margin:0 0 4px;font-size:12px;color:#64748b;">
-                              This is an automated notification from <strong>MRS & Co. Chartered Accountants</strong>.
+                              This is an automated notification from <strong>MRS &amp; Co. Chartered Accountants</strong>.
                             </p>
                             <p style="margin:0;font-size:11px;color:#94a3b8;">
                               Please do not reply to this email. Log in to your dashboard to respond.
@@ -293,7 +293,7 @@ public void logKeyDebug() {
         try {
             sendViaResend(
                     recipient,
-                    "📋 Test Connection from MRS & Co. Backend",
+                    "📋 Test Connection from MRS & Co. Chartered Accountants",
                     "<h3>Resend configuration: Success!</h3><p>If you see this, the Resend integration is working perfectly.</p>"
             );
             return "Success: Email sent successfully from " + fromEmail + " to " + recipient;

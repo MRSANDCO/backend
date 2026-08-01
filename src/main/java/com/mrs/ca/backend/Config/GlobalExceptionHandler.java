@@ -23,6 +23,11 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(Map.of("error", ex.getMessage()));
     }
 
+    @ExceptionHandler(com.mrs.ca.backend.exception.WhatsAppException.class)
+    public ResponseEntity<?> handleWhatsAppException(com.mrs.ca.backend.exception.WhatsAppException ex) {
+        return ResponseEntity.badRequest().body(Map.of("error", ex.getMessage()));
+    }
+
     @ExceptionHandler(SecurityException.class)
     public ResponseEntity<?> handleSecurityException(SecurityException ex) {
         return ResponseEntity.status(403).body(Map.of("error", ex.getMessage()));

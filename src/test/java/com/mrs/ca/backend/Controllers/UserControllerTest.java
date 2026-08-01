@@ -6,6 +6,7 @@ import com.mrs.ca.backend.Config.SecurityConfig;
 import com.mrs.ca.backend.Models.Document;
 import com.mrs.ca.backend.Models.User;
 import com.mrs.ca.backend.Services.UserService;
+import com.mrs.ca.backend.Services.QueryService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,6 +32,7 @@ class UserControllerTest {
 
     @Autowired private MockMvc mockMvc;
     @MockitoBean private UserService userService;
+    @MockitoBean private QueryService queryService;
     @MockitoBean private MongoMappingContext mongoMappingContext;
 
     // ===================== GET /api/user/{userId}/documents =====================

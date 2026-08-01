@@ -46,6 +46,12 @@ public class Query {
     @Field("status")
     private QueryStatus status = QueryStatus.OPEN;
 
+    @Field("whatsapp_message_sid")
+    private String whatsAppMessageSid;
+
+    @Field("whatsapp_delivery_status")
+    private String whatsAppDeliveryStatus;
+
     @CreatedDate
     @Field("created_at")
     private LocalDateTime createdAt;
