@@ -47,6 +47,9 @@ public void logKeyDebug() {
     @Value("${app.frontend.url:http://localhost:3000}")
     private String frontendUrl;
 
+    @Value("${app.backend.url:http://localhost:8080}")
+    private String backendUrl;
+
     private final RestClient restClient = RestClient.create();
 
     /**
@@ -131,14 +134,30 @@ public void logKeyDebug() {
             messagePreview = "<p style=\"font-size:13px;color:#9ca3af;font-style:italic;margin:0 0 12px;\">A document has been attached to this query.</p>";
         }
 
-        // Attachment badge (shown when a file is present, regardless of message)
+        // Attachment badge with download link (shown when a file is present)
         String attachmentRow = "";
-        if (query.getFileName() != null && !query.getFileName().isBlank()) {
-            attachmentRow = "<div style=\"margin-top:8px;display:flex;align-items:center;gap:8px;"
+        if (query.getFileName() != null && !query.getFileName().isBlank() && query.getId() != null) {
+            String targetUserId = query.getTargetUser() != null ? query.getTargetUser().getUserId() : "";
+            // Direct download URL — hits the authenticated UserController endpoint
+            String downloadUrl = backendUrl.replaceAll("/$", "")
+                    + "/api/users/" + targetUserId
+                    + "/queries/" + query.getId() + "/download";
+            attachmentRow = "<div style=\"margin-top:12px;\">"
+                    + "<div style=\"display:flex;align-items:center;gap:8px;"
                     + "padding:10px 14px;background:#fef3c7;border:1px solid #fde68a;border-radius:8px;"
-                    + "font-size:12px;color:#92400e;\">"
-                    + "<span style=\"font-size:16px;\">📎</span>"
-                    + "<span><strong>Attachment:</strong> " + escapeHtml(query.getFileName()) + "</span>"
+                    + "font-size:12px;color:#92400e;margin-bottom:8px;\">\n"
+                    + "<span style=\"font-size:16px;\">📎</span>\n"
+                    + "<span><strong>Attachment:</strong> " + escapeHtml(query.getFileName()) + "</span>\n"
+                    + "</div>\n"
+                    + "<p style=\"margin:0 0 6px;font-size:12px;color:#4b5563;\">"
+                    + "Please log in to your dashboard to download the attachment securely, or use the button below:"
+                    + "</p>\n"
+                    + "<a href=\"" + downloadUrl + "\""
+                    + " style=\"display:inline-block;background:#f59e0b;color:#ffffff;text-decoration:none;"
+                    + "font-size:13px;font-weight:700;padding:10px 24px;border-radius:8px;"
+                    + "box-shadow:0 2px 8px rgba(245,158,11,0.35);letter-spacing:0.02em;\">\n"
+                    + "📥 Download Attachment\n"
+                    + "</a>"
                     + "</div>";
         }
 

@@ -224,7 +224,7 @@ public class QueryService {
     }
 
     /**
-     * Stream a query's PDF attachment from GridFS to the HTTP response.
+     * Stream a query's file attachment from GridFS to the HTTP response.
      */
     public void streamQueryFile(String queryId, String userId, HttpServletResponse response)
             throws IOException {
@@ -232,8 +232,8 @@ public class QueryService {
         Query query = findQueryOrThrow(queryId);
         validateOwnership(query, user, queryId, userId);
 
-        if (query.getType() != Query.QueryType.PDF || query.getGridFsId() == null || query.getGridFsId().isBlank()) {
-            throw new IllegalArgumentException("This query has no PDF attachment.");
+        if (query.getGridFsId() == null || query.getGridFsId().isBlank()) {
+            throw new IllegalArgumentException("This query has no file attachment.");
         }
 
         GridFSFile gridFSFile = gridFsTemplate.findOne(
@@ -242,10 +242,10 @@ public class QueryService {
         );
 
         if (gridFSFile == null) {
-            throw new IllegalArgumentException("PDF file not found in storage.");
+            throw new IllegalArgumentException("Attachment file not found in storage.");
         }
 
-        response.setContentType("application/pdf");
+        response.setContentType(resolveContentType(query.getFileName()));
         response.setHeader("Content-Disposition",
                 "attachment; filename=\"" + query.getFileName() + "\"");
 
@@ -257,20 +257,20 @@ public class QueryService {
             StreamUtils.copy(inputStream, response.getOutputStream());
         }
 
-        log.info("[QUERY] PDF streamed for queryId='{}' to userId='{}'", queryId, userId);
+        log.info("[QUERY] Attachment streamed for queryId='{}' to userId='{}'", queryId, userId);
     }
 
-    // ===================== Admin — stream PDF (no ownership check) =====================
+    // ===================== Admin — stream attachment (no ownership check) =====================
 
     /**
-     * Admin can stream any query's PDF without ownership check.
+     * Admin can stream any query's file attachment without ownership check.
      */
     public void streamQueryFileForAdmin(String queryId, HttpServletResponse response)
             throws IOException {
         Query query = findQueryOrThrow(queryId);
 
-        if (query.getType() != Query.QueryType.PDF || query.getGridFsId() == null || query.getGridFsId().isBlank()) {
-            throw new IllegalArgumentException("This query has no PDF attachment.");
+        if (query.getGridFsId() == null || query.getGridFsId().isBlank()) {
+            throw new IllegalArgumentException("This query has no file attachment.");
         }
 
         GridFSFile gridFSFile = gridFsTemplate.findOne(
@@ -279,10 +279,10 @@ public class QueryService {
         );
 
         if (gridFSFile == null) {
-            throw new IllegalArgumentException("PDF file not found in storage.");
+            throw new IllegalArgumentException("Attachment file not found in storage.");
         }
 
-        response.setContentType("application/pdf");
+        response.setContentType(resolveContentType(query.getFileName()));
         response.setHeader("Content-Disposition",
                 "attachment; filename=\"" + query.getFileName() + "\"");
 
@@ -294,10 +294,23 @@ public class QueryService {
             StreamUtils.copy(inputStream, response.getOutputStream());
         }
 
-        log.info("[QUERY] Admin downloaded PDF for queryId='{}'", queryId);
+        log.info("[QUERY] Admin downloaded attachment for queryId='{}'", queryId);
     }
 
     // ===================== Helpers =====================
+
+    /**
+     * Derive the HTTP Content-Type from a filename's extension.
+     * Falls back to application/octet-stream for unknown types.
+     */
+    private String resolveContentType(String fileName) {
+        if (fileName == null) return "application/octet-stream";
+        String lower = fileName.toLowerCase();
+        if (lower.endsWith(".pdf"))  return "application/pdf";
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+        if (lower.endsWith(".png"))  return "image/png";
+        return "application/octet-stream";
+    }
 
     private User findUserOrThrow(String userId) {
         return userRepository.findByUserId(userId)
