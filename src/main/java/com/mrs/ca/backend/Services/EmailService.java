@@ -119,12 +119,31 @@ public void logKeyDebug() {
                 : "<span style=\"background:#6366f1;color:#fff;padding:2px 10px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:0.06em;\">TEXT</span>";
         String raisedAt     = query.getCreatedAt() != null ? query.getCreatedAt().format(DATE_FMT) : "Just now";
         String loginUrl     = frontendUrl.replaceAll("/$", "") + "/login";
-        String messagePreview = (query.getMessageText() != null && !query.getMessageText().isBlank())
-                ? "<p style=\"font-size:14px;color:#374151;line-height:1.7;margin:0 0 24px;\">"
-                  + escapeHtml(query.getMessageText()).substring(0, Math.min(query.getMessageText().length(), 300))
-                  + (query.getMessageText().length() > 300 ? "…" : "")
-                  + "</p>"
-                : "<p style=\"font-size:13px;color:#9ca3af;font-style:italic;margin:0 0 24px;\">A PDF document has been attached to this query.</p>";
+        String messagePreview;
+        if (query.getMessageText() != null && !query.getMessageText().isBlank()) {
+            // Show message text (also applies to mixed text+attachment queries)
+            messagePreview = "<p style=\"font-size:14px;color:#374151;line-height:1.7;margin:0 0 12px;\">"
+                    + escapeHtml(query.getMessageText()).substring(0, Math.min(query.getMessageText().length(), 300))
+                    + (query.getMessageText().length() > 300 ? "…" : "")
+                    + "</p>";
+        } else {
+            // PDF-only query
+            messagePreview = "<p style=\"font-size:13px;color:#9ca3af;font-style:italic;margin:0 0 12px;\">A document has been attached to this query.</p>";
+        }
+
+        // Attachment badge (shown when a file is present, regardless of message)
+        String attachmentRow = "";
+        if (query.getFileName() != null && !query.getFileName().isBlank()) {
+            attachmentRow = "<div style=\"margin-top:8px;display:flex;align-items:center;gap:8px;"
+                    + "padding:10px 14px;background:#fef3c7;border:1px solid #fde68a;border-radius:8px;"
+                    + "font-size:12px;color:#92400e;\">"
+                    + "<span style=\"font-size:16px;\">📎</span>"
+                    + "<span><strong>Attachment:</strong> " + escapeHtml(query.getFileName()) + "</span>"
+                    + "</div>";
+        }
+
+        // Combine message + attachment block
+        String messageBlock = messagePreview + attachmentRow;
 
         return """
                 <!DOCTYPE html>
@@ -277,7 +296,7 @@ public void logKeyDebug() {
                 """.formatted(
                 escapeHtml(clientName),
                 escapeHtml(subject),
-                messagePreview,
+                messageBlock,
                 queryTypeBadge,
                 raisedAt,
                 loginUrl,

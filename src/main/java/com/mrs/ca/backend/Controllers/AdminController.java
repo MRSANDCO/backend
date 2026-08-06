@@ -262,6 +262,59 @@ public class AdminController {
     }
 
     /**
+     * Raise a mixed query (text + optional attachment) to a specific user/company.
+     * Multipart form: userId (required), subject (required),
+     *                 message (optional), file (optional — PDF, JPEG, or PNG).
+     */
+    @PostMapping("/queries/mixed")
+    public ResponseEntity<?> raiseMixedQuery(
+            @RequestParam("userId") String userId,
+            @RequestParam("subject") String subject,
+            @RequestParam(value = "message", required = false) String message,
+            @RequestParam(value = "file", required = false) MultipartFile file) {
+
+        if (userId == null || userId.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "userId is required"));
+        }
+        if (subject == null || subject.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "subject is required"));
+        }
+        if ((message == null || message.isBlank()) && (file == null || file.isEmpty())) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "At least a message or a file attachment is required"));
+        }
+
+        // Validate file type if a file was provided
+        if (file != null && !file.isEmpty()) {
+            String contentType = file.getContentType();
+            if (contentType == null || !ALLOWED_MIME_TYPES.contains(contentType)) {
+                log.warn("Blocked mixed-query upload with disallowed content-type '{}' for userId={}",
+                        contentType, userId);
+                return ResponseEntity.badRequest()
+                        .body(Map.of("error", "Unsupported file type. Allowed: PDF, JPEG, PNG"));
+            }
+        }
+
+        try {
+            Query query = queryService.raiseQueryWithAttachment(userId, subject, message, file);
+            var responseBody = new java.util.LinkedHashMap<String, Object>();
+            responseBody.put("message", "Query raised successfully");
+            responseBody.put("queryId", query.getId());
+            responseBody.put("type", query.getType().name());
+            responseBody.put("status", query.getStatus().name());
+            if (query.getFileName() != null) {
+                responseBody.put("fileName", query.getFileName());
+            }
+            return ResponseEntity.status(HttpStatus.CREATED).body(responseBody);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (IOException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to store attachment: " + e.getMessage()));
+        }
+    }
+
+    /**
      * List all queries raised by admin.
      * Optional query param: ?userId= to filter by company/user.
      */

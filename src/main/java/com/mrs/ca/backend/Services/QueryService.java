@@ -72,6 +72,57 @@ public class QueryService {
     }
 
     /**
+     * Raise a query with an optional file attachment.
+     * If a file is provided it is stored in GridFS and the query type is set to PDF.
+     * If no file is provided a plain TEXT query is created.
+     * Allowed MIME types: application/pdf, image/jpeg, image/png.
+     */
+    public Query raiseQueryWithAttachment(String targetUserId,
+                                          String subject,
+                                          String message,
+                                          MultipartFile file) throws IOException {
+        User targetUser = findUserOrThrow(targetUserId);
+
+        Query query = new Query();
+        query.setSubject(subject);
+        query.setRaisedByAdmin(adminUsername);
+        query.setTargetUser(targetUser);
+        query.setStatus(Query.QueryStatus.OPEN);
+
+        if (file != null && !file.isEmpty()) {
+            String originalFileName = file.getOriginalFilename() != null
+                    ? file.getOriginalFilename() : "attachment";
+
+            ObjectId gridFsObjectId = gridFsTemplate.store(
+                    file.getInputStream(),
+                    originalFileName,
+                    file.getContentType()
+            );
+
+            query.setType(Query.QueryType.PDF);
+            query.setGridFsId(gridFsObjectId.toHexString());
+            query.setFileName(originalFileName);
+            query.setFileSize(file.getSize());
+            // Also store message text when provided alongside the file
+            if (message != null && !message.isBlank()) {
+                query.setMessageText(message);
+            }
+        } else {
+            query.setType(Query.QueryType.TEXT);
+            query.setMessageText(message);
+        }
+
+        Query saved = queryRepository.save(query);
+        log.info("[QUERY] Query '{}' raised by admin for userId='{}' (hasAttachment={})",
+                subject, targetUserId, file != null && !file.isEmpty());
+
+        // Send email notification to the client
+        emailService.sendQueryNotification(targetUser, saved);
+
+        return saved;
+    }
+
+    /**
      * Raise a PDF query to a specific user/company.
      * The PDF is stored in GridFS.
      */
