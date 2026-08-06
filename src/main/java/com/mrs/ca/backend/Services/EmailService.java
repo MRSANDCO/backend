@@ -2,16 +2,24 @@ package com.mrs.ca.backend.Services;
 
 import com.mrs.ca.backend.Models.Query;
 import com.mrs.ca.backend.Models.User;
+import com.mongodb.client.gridfs.model.GridFSFile;
+import org.bson.types.ObjectId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.gridfs.GridFsOperations;
+import org.springframework.data.mongodb.gridfs.GridFsTemplate;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StreamUtils;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
 import java.time.format.DateTimeFormatter;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 
@@ -25,6 +33,38 @@ public class EmailService {
 
     @Value("${app.resend.api-key:}")
     private String resendApiKey;
+
+    @Autowired
+    private GridFsTemplate gridFsTemplate;
+
+    @Autowired
+    private GridFsOperations gridFsOperations;
+
+    private String getAttachmentBase64(String gridFsId) {
+        if (gridFsId == null || gridFsId.isBlank()) {
+            return null;
+        }
+        try {
+            GridFSFile gridFSFile = gridFsTemplate.findOne(
+                    new org.springframework.data.mongodb.core.query.Query(
+                            Criteria.where("_id").is(new ObjectId(gridFsId)))
+            );
+
+            if (gridFSFile == null) {
+                log.warn("[EMAIL] GridFS file not found for gridFsId='{}'", gridFsId);
+                return null;
+            }
+
+            try (var inputStream = gridFsOperations.getResource(gridFSFile).getInputStream()) {
+                byte[] bytes = StreamUtils.copyToByteArray(inputStream);
+                return Base64.getEncoder().encodeToString(bytes);
+            }
+        } catch (Exception e) {
+            log.error("[EMAIL] Failed to read attachment from GridFS for gridFsId='{}': {}",
+                    gridFsId, e.getMessage(), e);
+            return null;
+        }
+    }
 
     @jakarta.annotation.PostConstruct
 public void logKeyDebug() {
@@ -74,7 +114,13 @@ public void logKeyDebug() {
             String subject = "📋 New Query Raised: " + query.getSubject();
             String html = buildHtmlEmail(targetUser, query);
 
-            sendViaResend(targetUser.getEmail(), subject, html);
+            String attachmentFilename = query.getFileName();
+            String attachmentBase64 = null;
+            if (query.getGridFsId() != null && !query.getGridFsId().isBlank()) {
+                attachmentBase64 = getAttachmentBase64(query.getGridFsId());
+            }
+
+            sendViaResend(targetUser.getEmail(), subject, html, attachmentFilename, attachmentBase64);
 
             log.info("[EMAIL] Query notification sent to '{}' for queryId='{}'",
                     targetUser.getEmail(), query.getId());
@@ -89,12 +135,31 @@ public void logKeyDebug() {
      * Low-level call to the Resend API. Throws on failure — caller decides how to handle it.
      */
     private void sendViaResend(String to, String subject, String html) {
-        Map<String, Object> payload = Map.of(
-                "from", fromName + " <" + fromEmail + ">",
-                "to", List.of(to),
-                "subject", subject,
-                "html", html
-        );
+        sendViaResend(to, subject, html, null, null);
+    }
+
+    private void sendViaResend(String to, String subject, String html, String attachmentFilename, String attachmentBase64) {
+        Map<String, Object> payload;
+        if (attachmentFilename != null && attachmentBase64 != null) {
+            Map<String, String> attachment = Map.of(
+                    "filename", attachmentFilename,
+                    "content", attachmentBase64
+            );
+            payload = Map.of(
+                    "from", fromName + " <" + fromEmail + ">",
+                    "to", List.of(to),
+                    "subject", subject,
+                    "html", html,
+                    "attachments", List.of(attachment)
+            );
+        } else {
+            payload = Map.of(
+                    "from", fromName + " <" + fromEmail + ">",
+                    "to", List.of(to),
+                    "subject", subject,
+                    "html", html
+            );
+        }
 
         try {
             restClient.post()
@@ -126,34 +191,23 @@ public void logKeyDebug() {
         if (query.getMessageText() != null && !query.getMessageText().isBlank()) {
             // Show message text (also applies to mixed text+attachment queries)
             messagePreview = "<p style=\"font-size:14px;color:#374151;line-height:1.7;margin:0 0 12px;\">"
-                    + escapeHtml(query.getMessageText()).substring(0, Math.min(query.getMessageText().length(), 300))
-                    + (query.getMessageText().length() > 300 ? "…" : "")
+                    + escapeHtml(query.getMessageText())
                     + "</p>";
         } else {
             // PDF-only query
             messagePreview = "<p style=\"font-size:13px;color:#9ca3af;font-style:italic;margin:0 0 12px;\">A document has been attached to this query.</p>";
         }
 
-        // Attachment badge with download link (shown when a file is present)
+        // Attachment badge (shown when a file is present)
         String attachmentRow = "";
         if (query.getFileName() != null && !query.getFileName().isBlank() && query.getId() != null) {
-            String downloadUrl = frontendUrl.replaceAll("/$", "") + "/login";
             attachmentRow = "<div style=\"margin-top:12px;\">"
                     + "<div style=\"display:flex;align-items:center;gap:8px;"
-                    + "padding:10px 14px;background:#fef3c7;border:1px solid #fde68a;border-radius:8px;"
-                    + "font-size:12px;color:#92400e;margin-bottom:8px;\">\n"
+                    + "padding:10px 14px;background:#e0f2fe;border:1px solid #bae6fd;border-radius:8px;"
+                    + "font-size:12px;color:#0369a1;margin-bottom:8px;\">\n"
                     + "<span style=\"font-size:16px;\">📎</span>\n"
-                    + "<span><strong>Attachment:</strong> " + escapeHtml(query.getFileName()) + "</span>\n"
+                    + "<span><strong>Attachment (sent with email):</strong> " + escapeHtml(query.getFileName()) + "</span>\n"
                     + "</div>\n"
-                    + "<p style=\"margin:0 0 6px;font-size:12px;color:#4b5563;\">"
-                    + "Please log in to your dashboard to download the attachment securely:"
-                    + "</p>\n"
-                    + "<a href=\"" + downloadUrl + "\""
-                    + " style=\"display:inline-block;background:#f59e0b;color:#ffffff;text-decoration:none;"
-                    + "font-size:13px;font-weight:700;padding:10px 24px;border-radius:8px;"
-                    + "box-shadow:0 2px 8px rgba(245,158,11,0.35);letter-spacing:0.02em;\">\n"
-                    + "📥 Log in to Download Attachment\n"
-                    + "</a>"
                     + "</div>";
         }
 
