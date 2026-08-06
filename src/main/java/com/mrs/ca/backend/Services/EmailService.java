@@ -206,7 +206,7 @@ public void logKeyDebug() {
                     + "padding:10px 14px;background:#e0f2fe;border:1px solid #bae6fd;border-radius:8px;"
                     + "font-size:12px;color:#0369a1;margin-bottom:8px;\">\n"
                     + "<span style=\"font-size:16px;\">📎</span>\n"
-                    + "<span><strong>Attachment (sent with email):</strong> " + escapeHtml(query.getFileName()) + "</span>\n"
+                    + "<span><strong>Attachment (Find below the mail):</strong> " + escapeHtml(query.getFileName()) + "</span>\n"
                     + "</div>\n"
                     + "</div>";
         }
