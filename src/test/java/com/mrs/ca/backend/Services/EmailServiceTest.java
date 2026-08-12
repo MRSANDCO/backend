@@ -86,7 +86,7 @@ class EmailServiceTest {
         method.setAccessible(true);
         String html = (String) method.invoke(emailService, user, query);
 
-        assertThat(html).contains("Attachment (sent with email)");
+        assertThat(html).contains("Attachment (Find below the mail):");
         assertThat(html).contains("contract.pdf");
         assertThat(html).doesNotContain("Login to Download Attachment");
         assertThat(html).doesNotContain("Please log in to your dashboard to download the attachment securely");

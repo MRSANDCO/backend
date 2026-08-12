@@ -33,17 +33,20 @@ public class QueryService {
     private final GridFsTemplate gridFsTemplate;
     private final GridFsOperations gridFsOperations;
     private final EmailService emailService;
+    private final WhatsAppService whatsAppService;
 
     public QueryService(QueryRepository queryRepository,
                         UserRepository userRepository,
                         GridFsTemplate gridFsTemplate,
                         GridFsOperations gridFsOperations,
-                        EmailService emailService) {
+                        EmailService emailService,
+                        WhatsAppService whatsAppService) {
         this.queryRepository = queryRepository;
         this.userRepository = userRepository;
         this.gridFsTemplate = gridFsTemplate;
         this.gridFsOperations = gridFsOperations;
         this.emailService = emailService;
+        this.whatsAppService = whatsAppService;
     }
 
     // ===================== Admin Operations =====================
@@ -67,6 +70,9 @@ public class QueryService {
 
         // Send email notification to the client (async — failure does not affect the response)
         emailService.sendQueryNotification(targetUser, saved);
+
+        // Send WhatsApp notification to the client (async — failure does not affect the response)
+        whatsAppService.sendQueryNotification(targetUser, saved);
 
         return saved;
     }
@@ -119,6 +125,9 @@ public class QueryService {
         // Send email notification to the client
         emailService.sendQueryNotification(targetUser, saved);
 
+        // Send WhatsApp notification to the client
+        whatsAppService.sendQueryNotification(targetUser, saved);
+
         return saved;
     }
 
@@ -154,6 +163,9 @@ public class QueryService {
 
         // Send email notification to the client (async — failure does not affect the response)
         emailService.sendQueryNotification(targetUser, saved);
+
+        // Send WhatsApp notification to the client (async — failure does not affect the response)
+        whatsAppService.sendQueryNotification(targetUser, saved);
 
         return saved;
     }

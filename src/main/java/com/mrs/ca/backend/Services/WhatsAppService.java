@@ -1,6 +1,8 @@
 package com.mrs.ca.backend.Services;
 
 import com.mrs.ca.backend.Config.WhatsAppConfig;
+import com.mrs.ca.backend.Models.Query;
+import com.mrs.ca.backend.Models.User;
 import com.mrs.ca.backend.dto.WhatsAppMessageResponse;
 import com.mrs.ca.backend.exception.WhatsAppException;
 import org.slf4j.Logger;
@@ -9,12 +11,14 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -99,5 +103,102 @@ public class WhatsAppService {
             log.error("Unexpected error occurred while sending WhatsApp message", e);
             throw new WhatsAppException("Failed to send WhatsApp message due to an unexpected error", e);
         }
+    }
+
+    /**
+     * Send a WhatsApp notification to the client asynchronously.
+     * Gracefully catches and logs all errors so it never interrupts the query creation flow.
+     */
+    @Async
+    public void sendQueryNotification(User targetUser, Query query) {
+        String clientPhone = targetUser.getPhone();
+        String clientId = targetUser.getUserId();
+
+        if (clientPhone == null || clientPhone.isBlank()) {
+            log.warn("[WHATSAPP] Skipping notification for client ID '{}' — no phone number on record.", clientId);
+            return;
+        }
+
+        String normalizedPhone = normalizePhoneNumber(clientPhone);
+        if (normalizedPhone.isEmpty()) {
+            log.warn("[WHATSAPP] Skipping notification for client ID '{}' — phone number '{}' has no digits.", clientId, clientPhone);
+            return;
+        }
+
+        String accessToken = whatsAppConfig.getAccessToken();
+        String phoneNumberId = whatsAppConfig.getPhoneNumberId();
+
+        if (accessToken == null || accessToken.isBlank()) {
+            log.warn("[WHATSAPP] WhatsApp access token is not configured. Skipping notification.");
+            return;
+        }
+
+        if (phoneNumberId == null || phoneNumberId.isBlank()) {
+            log.warn("[WHATSAPP] WhatsApp phone number ID is not configured. Skipping notification.");
+            return;
+        }
+
+        try {
+            log.info("[WHATSAPP] WhatsApp notification attempted for client ID: {}", clientId);
+
+            String clientName = targetUser.getFullName() != null && !targetUser.getFullName().isBlank()
+                    ? targetUser.getFullName()
+                    : clientId;
+
+            // Prepare template JSON payload structure
+            Map<String, Object> payload = Map.of(
+                    "messaging_product", "whatsapp",
+                    "recipient_type", "individual",
+                    "to", normalizedPhone,
+                    "type", "template",
+                    "template", Map.of(
+                            "name", "query_raised_notification",
+                            "language", Map.of("code", "en"),
+                            "components", List.of(
+                                    Map.of(
+                                            "type", "body",
+                                            "parameters", List.of(
+                                                    Map.of("type", "text", "text", clientName)
+                                            )
+                                    )
+                            )
+                    )
+            );
+
+            // Construct API URL using Config
+            String url = String.format("%s/%s/%s/messages",
+                    whatsAppConfig.getBaseUrl().replaceAll("/$", ""),
+                    whatsAppConfig.getApiVersion(),
+                    phoneNumberId
+            );
+
+            // Build Headers
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.setBearerAuth(accessToken);
+
+            HttpEntity<Map<String, Object>> requestEntity = new HttpEntity<>(payload, headers);
+
+            restTemplate.postForEntity(url, requestEntity, Void.class);
+
+            log.info("[WHATSAPP] WhatsApp notification successfully sent to client ID: {}", clientId);
+
+        } catch (HttpClientErrorException | HttpServerErrorException e) {
+            log.error("[WHATSAPP] WhatsApp notification failed with the Meta API error for client ID: {}. Status: {}, Body: {}",
+                    clientId, e.getStatusCode(), e.getResponseBodyAsString());
+        } catch (Exception e) {
+            log.error("[WHATSAPP] WhatsApp notification failed with error for client ID: {}. Message: {}",
+                    clientId, e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Normalize the phone number to digits only (e.g. country code + number, no +/spaces/dashes).
+     */
+    public String normalizePhoneNumber(String phone) {
+        if (phone == null) {
+            return "";
+        }
+        return phone.replaceAll("\\D", "");
     }
 }
