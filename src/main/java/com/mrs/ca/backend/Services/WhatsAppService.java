@@ -156,7 +156,7 @@ public class WhatsAppService {
                     "type", "template",
                     "template", Map.of(
                             "name", "query_raised_notification",
-                            "language", Map.of("code", "en_US")
+                            "language", Map.of("code", "en")
                     )
             );
 
@@ -168,7 +168,7 @@ public class WhatsAppService {
                     "type", "template",
                     "template", Map.of(
                             "name", "query_raised_notification",
-                            "language", Map.of("code", "en_US"),
+                            "language", Map.of("code", "en"),
                             "components", List.of(
                                     Map.of(
                                             "type", "body",
