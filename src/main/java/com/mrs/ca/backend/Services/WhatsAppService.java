@@ -139,13 +139,16 @@ public class WhatsAppService {
         }
 
         try {
-            log.info("[WHATSAPP] WhatsApp notification attempted for client ID: {}", clientId);
+            log.info("[WHATSAPP] WhatsApp notification attempted for client ID: {}, normalized phone: {}",
+                    clientId, normalizedPhone);
 
             String clientName = targetUser.getFullName() != null && !targetUser.getFullName().isBlank()
                     ? targetUser.getFullName()
                     : clientId;
 
             // Prepare template JSON payload structure
+            // NOTE: The template 'query_raised_notification' currently has 0 body parameters.
+            // If you update the template to include {{1}} for the client name, re-add the components block below.
             Map<String, Object> payload = Map.of(
                     "messaging_product", "whatsapp",
                     "recipient_type", "individual",
@@ -153,7 +156,19 @@ public class WhatsAppService {
                     "type", "template",
                     "template", Map.of(
                             "name", "query_raised_notification",
-                            "language", Map.of("code", "en"),
+                            "language", Map.of("code", "en_US")
+                    )
+            );
+
+            /* ---- UNCOMMENT THIS BLOCK once your Meta template includes {{1}} for the client name ----
+            Map<String, Object> payload = Map.of(
+                    "messaging_product", "whatsapp",
+                    "recipient_type", "individual",
+                    "to", normalizedPhone,
+                    "type", "template",
+                    "template", Map.of(
+                            "name", "query_raised_notification",
+                            "language", Map.of("code", "en_US"),
                             "components", List.of(
                                     Map.of(
                                             "type", "body",
@@ -164,6 +179,7 @@ public class WhatsAppService {
                             )
                     )
             );
+            ---- END OF COMMENTED BLOCK ---- */
 
             // Construct API URL using Config
             String url = String.format("%s/%s/%s/messages",
@@ -172,6 +188,8 @@ public class WhatsAppService {
                     phoneNumberId
             );
 
+            log.info("[WHATSAPP] Sending template message to URL: {}, payload: {}", url, payload);
+
             // Build Headers
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
@@ -179,15 +197,15 @@ public class WhatsAppService {
 
             HttpEntity<Map<String, Object>> requestEntity = new HttpEntity<>(payload, headers);
 
-            restTemplate.postForEntity(url, requestEntity, Void.class);
-
-            log.info("[WHATSAPP] WhatsApp notification successfully sent to client ID: {}", clientId);
+            ResponseEntity<String> response = restTemplate.postForEntity(url, requestEntity, String.class);
+            log.info("[WHATSAPP] WhatsApp notification successfully sent to client ID: {}. Status: {}, Body: {}",
+                    clientId, response.getStatusCode(), response.getBody());
 
         } catch (HttpClientErrorException | HttpServerErrorException e) {
-            log.error("[WHATSAPP] WhatsApp notification failed with the Meta API error for client ID: {}. Status: {}, Body: {}",
-                    clientId, e.getStatusCode(), e.getResponseBodyAsString());
+            log.error("[WHATSAPP] Meta API error for client ID: {}. HTTP Status: {}, Response Body: {}",
+                    clientId, e.getStatusCode(), e.getResponseBodyAsString(), e);
         } catch (Exception e) {
-            log.error("[WHATSAPP] WhatsApp notification failed with error for client ID: {}. Message: {}",
+            log.error("[WHATSAPP] Unexpected error for client ID: {}. Message: {}",
                     clientId, e.getMessage(), e);
         }
     }
@@ -200,5 +218,64 @@ public class WhatsAppService {
             return "";
         }
         return phone.replaceAll("\\D", "");
+    }
+
+    /**
+     * Test WhatsApp configuration by sending a plain text message (no template required).
+     * Use this from the admin test endpoint to verify credentials and phone number ID are correct.
+     *
+     * @param to recipient phone number with country code (e.g. "919876543210")
+     * @return diagnostic result string
+     */
+    public String testWhatsAppConfiguration(String to) {
+        String accessToken = whatsAppConfig.getAccessToken();
+        String phoneNumberId = whatsAppConfig.getPhoneNumberId();
+        String apiVersion = whatsAppConfig.getApiVersion();
+        String baseUrl = whatsAppConfig.getBaseUrl();
+
+        if (accessToken == null || accessToken.isBlank()) {
+            return "FAILURE: WHATSAPP_ACCESS_TOKEN is not configured.";
+        }
+        if (phoneNumberId == null || phoneNumberId.isBlank()) {
+            return "FAILURE: WHATSAPP_PHONE_NUMBER_ID is not configured.";
+        }
+
+        String normalizedTo = normalizePhoneNumber(to);
+        if (normalizedTo.isEmpty()) {
+            return "FAILURE: Invalid recipient phone number provided.";
+        }
+
+        String url = String.format("%s/%s/%s/messages",
+                baseUrl.replaceAll("/$", ""), apiVersion, phoneNumberId);
+
+        log.info("[WHATSAPP-TEST] Testing WhatsApp API. URL={}, to={}, phoneNumberId={}, apiVersion={}",
+                url, normalizedTo, phoneNumberId, apiVersion);
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("messaging_product", "whatsapp");
+        payload.put("recipient_type", "individual");
+        payload.put("to", normalizedTo);
+        payload.put("type", "text");
+        Map<String, Object> textObj = new HashMap<>();
+        textObj.put("preview_url", false);
+        textObj.put("body", "✅ MRS & Co. WhatsApp integration test message. If you see this, the API is working correctly.");
+        payload.put("text", textObj);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(accessToken);
+        HttpEntity<Map<String, Object>> requestEntity = new HttpEntity<>(payload, headers);
+
+        try {
+            ResponseEntity<String> response = restTemplate.postForEntity(url, requestEntity, String.class);
+            log.info("[WHATSAPP-TEST] Success. Status: {}, Body: {}", response.getStatusCode(), response.getBody());
+            return "SUCCESS: WhatsApp test message sent to " + normalizedTo + ". Response: " + response.getBody();
+        } catch (HttpClientErrorException | HttpServerErrorException e) {
+            log.error("[WHATSAPP-TEST] Meta API error. Status: {}, Body: {}", e.getStatusCode(), e.getResponseBodyAsString());
+            return "FAILURE: Meta API returned HTTP " + e.getStatusCode() + " — " + e.getResponseBodyAsString();
+        } catch (Exception e) {
+            log.error("[WHATSAPP-TEST] Unexpected error", e);
+            return "FAILURE: " + e.getMessage();
+        }
     }
 }

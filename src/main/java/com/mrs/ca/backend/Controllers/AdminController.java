@@ -5,6 +5,7 @@ import com.mrs.ca.backend.Models.Query;
 import com.mrs.ca.backend.Models.User;
 import com.mrs.ca.backend.Services.AdminService;
 import com.mrs.ca.backend.Services.QueryService;
+import com.mrs.ca.backend.Services.WhatsAppService;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,10 +34,12 @@ public class AdminController {
 
     private final AdminService adminService;
     private final QueryService queryService;
+    private final WhatsAppService whatsAppService;
 
-    public AdminController(AdminService adminService, QueryService queryService) {
+    public AdminController(AdminService adminService, QueryService queryService, WhatsAppService whatsAppService) {
         this.adminService = adminService;
         this.queryService = queryService;
+        this.whatsAppService = whatsAppService;
     }
 
     // ===================== User Management =====================
@@ -367,6 +370,26 @@ public class AdminController {
         }
         String result = queryService.testEmailConfiguration(email);
         if (result.startsWith("Success")) {
+            return ResponseEntity.ok(Map.of("message", result));
+        } else {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", result));
+        }
+    }
+
+    /**
+     * Test WhatsApp API configuration by sending a raw text message (no template needed).
+     * Body: { "phone": "+919876543210" }
+     * Use this to confirm credentials and phone number ID are correct.
+     */
+    @PostMapping("/queries/test-whatsapp")
+    public ResponseEntity<?> testWhatsApp(@RequestBody Map<String, String> request) {
+        String phone = request.get("phone");
+        if (phone == null || phone.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "recipient phone number is required"));
+        }
+        String result = whatsAppService.testWhatsAppConfiguration(phone);
+        if (result.startsWith("SUCCESS")) {
             return ResponseEntity.ok(Map.of("message", result));
         } else {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
