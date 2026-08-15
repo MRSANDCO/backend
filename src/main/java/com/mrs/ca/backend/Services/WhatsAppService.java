@@ -146,40 +146,53 @@ public class WhatsAppService {
                     ? targetUser.getFullName()
                     : clientId;
 
-            // Prepare template JSON payload structure
-            // NOTE: The template 'query_raised_notification' currently has 0 body parameters.
-            // If you update the template to include {{1}} for the client name, re-add the components block below.
-            Map<String, Object> payload = Map.of(
-                    "messaging_product", "whatsapp",
-                    "recipient_type", "individual",
-                    "to", normalizedPhone,
-                    "type", "template",
-                    "template", Map.of(
-                            "name", "query_raised_notification",
-                            "language", Map.of("code", "en")
+            String querySubject = (query != null && query.getSubject() != null && !query.getSubject().isBlank())
+                    ? query.getSubject()
+                    : "New Query";
+
+            String queryId = (query != null && query.getId() != null)
+                    ? query.getId()
+                    : "";
+
+            String frontendBase = whatsAppConfig.getFrontendUrl() != null
+                    ? whatsAppConfig.getFrontendUrl().replaceAll("/$", "")
+                    : "http://localhost:3000";
+            String queryUrl = frontendBase + "/client/queries/" + queryId;
+
+            log.info("[WHATSAPP] Constructing WhatsApp alert for client: '{}', queryId: '{}', target URL: '{}'",
+                    clientName, queryId, queryUrl);
+
+            // Prepare template JSON payload with dynamic body parameters (Client Name and Query Subject)
+            // The template has a static URL button on Meta, so only body parameters are passed.
+            Map<String, Object> bodyComponent = Map.of(
+                    "type", "body",
+                    "parameters", List.of(
+                            Map.of("type", "text", "text", clientName),
+                            Map.of("type", "text", "text", querySubject)
                     )
             );
 
-            /* ---- UNCOMMENT THIS BLOCK once your Meta template includes {{1}} for the client name ----
+            String templateName = (whatsAppConfig.getTemplateName() != null && !whatsAppConfig.getTemplateName().isBlank())
+                    ? whatsAppConfig.getTemplateName()
+                    : "query_raised_notification";
+
+            String templateLanguage = (whatsAppConfig.getTemplateLanguage() != null && !whatsAppConfig.getTemplateLanguage().isBlank())
+                    ? whatsAppConfig.getTemplateLanguage()
+                    : "en";
+
+            Map<String, Object> templateMap = Map.of(
+                    "name", templateName,
+                    "language", Map.of("code", templateLanguage),
+                    "components", List.of(bodyComponent)
+            );
+
             Map<String, Object> payload = Map.of(
                     "messaging_product", "whatsapp",
                     "recipient_type", "individual",
                     "to", normalizedPhone,
                     "type", "template",
-                    "template", Map.of(
-                            "name", "query_raised_notification",
-                            "language", Map.of("code", "en"),
-                            "components", List.of(
-                                    Map.of(
-                                            "type", "body",
-                                            "parameters", List.of(
-                                                    Map.of("type", "text", "text", clientName)
-                                            )
-                                    )
-                            )
-                    )
+                    "template", templateMap
             );
-            ---- END OF COMMENTED BLOCK ---- */
 
             // Construct API URL using Config
             String url = String.format("%s/%s/%s/messages",

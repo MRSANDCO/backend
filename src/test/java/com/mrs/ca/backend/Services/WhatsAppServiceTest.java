@@ -82,11 +82,16 @@ class WhatsAppServiceTest {
         user.setPhone("+91 98765-43210");
 
         Query query = new Query();
+        query.setId("query123");
+        query.setSubject("Tax Audit Query");
 
         when(whatsAppConfig.getAccessToken()).thenReturn("dummy_access_token");
         when(whatsAppConfig.getPhoneNumberId()).thenReturn("dummy_phone_id");
         when(whatsAppConfig.getBaseUrl()).thenReturn("https://graph.facebook.com");
         when(whatsAppConfig.getApiVersion()).thenReturn("v25.0");
+        when(whatsAppConfig.getTemplateName()).thenReturn("query_raised_notification");
+        when(whatsAppConfig.getTemplateLanguage()).thenReturn("en");
+        when(whatsAppConfig.getFrontendUrl()).thenReturn("https://mrsandco.in");
 
         whatsAppService.sendQueryNotification(user, query);
 
@@ -94,7 +99,7 @@ class WhatsAppServiceTest {
         verify(restTemplate).postForEntity(
                 eq("https://graph.facebook.com/v25.0/dummy_phone_id/messages"),
                 captor.capture(),
-                eq(Void.class)
+                eq(String.class)
         );
 
         HttpEntity<Map<String, Object>> entity = captor.getValue();
@@ -120,13 +125,16 @@ class WhatsAppServiceTest {
         List<Map<String, Object>> components = (List<Map<String, Object>>) template.get("components");
         assertThat(components).hasSize(1);
         
+        // Body component (Client Name {{1}}, Query Subject {{2}})
         Map<String, Object> bodyComponent = components.get(0);
         assertThat(bodyComponent.get("type")).isEqualTo("body");
         
-        List<Map<String, Object>> parameters = (List<Map<String, Object>>) bodyComponent.get("parameters");
-        assertThat(parameters).hasSize(1);
-        assertThat(parameters.get(0).get("type")).isEqualTo("text");
-        assertThat(parameters.get(0).get("text")).isEqualTo("John Doe");
+        List<Map<String, Object>> bodyParams = (List<Map<String, Object>>) bodyComponent.get("parameters");
+        assertThat(bodyParams).hasSize(2);
+        assertThat(bodyParams.get(0).get("type")).isEqualTo("text");
+        assertThat(bodyParams.get(0).get("text")).isEqualTo("John Doe");
+        assertThat(bodyParams.get(1).get("type")).isEqualTo("text");
+        assertThat(bodyParams.get(1).get("text")).isEqualTo("Tax Audit Query");
     }
 
     @Test

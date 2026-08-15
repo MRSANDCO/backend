@@ -7,6 +7,7 @@ import com.mrs.ca.backend.Models.Document;
 import com.mrs.ca.backend.Models.User;
 import com.mrs.ca.backend.Services.AdminService;
 import com.mrs.ca.backend.Services.QueryService;
+import com.mrs.ca.backend.Services.WhatsAppService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,6 +37,7 @@ class AdminControllerTest {
     @Autowired private MockMvc mockMvc;
     @MockitoBean private AdminService adminService;
     @MockitoBean private QueryService queryService;
+    @MockitoBean private WhatsAppService whatsAppService;
     @MockitoBean private MongoMappingContext mongoMappingContext;
 
     // ===================== POST /api/admin/users =====================

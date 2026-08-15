@@ -23,6 +23,15 @@ public class WhatsAppConfig {
     @Value("${whatsapp.base-url:https://graph.facebook.com}")
     private String baseUrl;
 
+    @Value("${app.frontend.url:http://localhost:3000}")
+    private String frontendUrl;
+
+    @Value("${whatsapp.template-name:query_raised_notification}")
+    private String templateName;
+
+    @Value("${whatsapp.template-language:en}")
+    private String templateLanguage;
+
     @Bean
     public RestTemplate restTemplate() {
         return new RestTemplate();
@@ -42,5 +51,17 @@ public class WhatsAppConfig {
 
     public String getBaseUrl() {
         return baseUrl;
+    }
+
+    public String getFrontendUrl() {
+        return frontendUrl;
+    }
+
+    public String getTemplateName() {
+        return templateName;
+    }
+
+    public String getTemplateLanguage() {
+        return templateLanguage;
     }
 }
