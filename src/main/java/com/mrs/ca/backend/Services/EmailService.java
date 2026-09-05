@@ -35,7 +35,7 @@ public class EmailService {
     @Value("${app.resend.api-key:}")
     private String resendApiKey;
 
-    @Value("${app.admin.email:admin@mrsandco.in}")
+    @Value("${app.admin.email:camrsandco@gmail.com}")
     private String adminEmail;
 
     @Autowired
