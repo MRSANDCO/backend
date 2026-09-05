@@ -175,4 +175,66 @@ class AdminControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("Document not found"));
     }
+
+    // ===================== GET /api/admin/queries/{queryId}/conversation =====================
+
+    @Test
+    @DisplayName("GET /api/admin/queries/{queryId}/conversation — 200 on success")
+    void getQueryConversation_success() throws Exception {
+        com.mrs.ca.backend.Models.Query query = new com.mrs.ca.backend.Models.Query();
+        query.setId("q123");
+        query.setSubject("Document Query");
+
+        com.mrs.ca.backend.dto.QueryConversationDto conversation =
+                new com.mrs.ca.backend.dto.QueryConversationDto(query, List.of());
+
+        when(queryService.getQueryConversation("q123", null, true)).thenReturn(conversation);
+
+        mockMvc.perform(get("/api/admin/queries/q123/conversation"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.query.id").value("q123"))
+                .andExpect(jsonPath("$.responses").isArray());
+    }
+
+    // ===================== POST /api/admin/queries/{queryId}/responses =====================
+
+    @Test
+    @DisplayName("POST /api/admin/queries/{queryId}/responses — 201 on success")
+    void submitAdminResponse_success() throws Exception {
+        com.mrs.ca.backend.Models.QueryResponse response = new com.mrs.ca.backend.Models.QueryResponse(
+                "q123", "user01", "admin", "Admin (admin)", null,
+                com.mrs.ca.backend.Models.QueryResponse.SenderRole.ADMIN, "Acknowledged."
+        );
+        response.setId("resp_admin_1");
+
+        when(queryService.addAdminResponse(eq("q123"), any(), eq("Acknowledged."))).thenReturn(response);
+
+        mockMvc.perform(post("/api/admin/queries/q123/responses")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"Acknowledged.\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.response.message").value("Acknowledged."))
+                .andExpect(jsonPath("$.response.senderRole").value("ADMIN"));
+    }
+
+    // ===================== PUT /api/admin/queries/{queryId}/status =====================
+
+    @Test
+    @DisplayName("PUT /api/admin/queries/{queryId}/status — 200 on success")
+    void updateQueryStatus_success() throws Exception {
+        com.mrs.ca.backend.Models.Query query = new com.mrs.ca.backend.Models.Query();
+        query.setId("q123");
+        query.setStatus(com.mrs.ca.backend.Models.Query.QueryStatus.RESOLVED);
+
+        when(queryService.updateQueryStatus("q123", com.mrs.ca.backend.Models.Query.QueryStatus.RESOLVED))
+                .thenReturn(query);
+
+        mockMvc.perform(put("/api/admin/queries/q123/status")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"RESOLVED\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.queryId").value("q123"))
+                .andExpect(jsonPath("$.status").value("RESOLVED"));
+    }
 }

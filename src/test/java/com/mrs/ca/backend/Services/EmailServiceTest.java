@@ -91,4 +91,31 @@ class EmailServiceTest {
         assertThat(html).doesNotContain("Login to Download Attachment");
         assertThat(html).doesNotContain("Please log in to your dashboard to download the attachment securely");
     }
+
+    @Test
+    void testBuildClientResponseHtmlEmail_ContainsClientInfoAndResponseText() throws Exception {
+        User client = new User("client01", "password", "Jane Doe", "jane@example.com", "1234567890");
+        Query query = new Query();
+        query.setId("query123");
+        query.setSubject("Document Verification");
+
+        com.mrs.ca.backend.Models.QueryResponse response = new com.mrs.ca.backend.Models.QueryResponse(
+                "query123", "client01", "client01", "Jane Doe", "jane@example.com",
+                com.mrs.ca.backend.Models.QueryResponse.SenderRole.CLIENT,
+                "I have uploaded all requested documents."
+        );
+        response.setCreatedAt(java.time.LocalDateTime.of(2026, 9, 5, 10, 30));
+
+        Method method = EmailService.class.getDeclaredMethod("buildClientResponseHtmlEmail", User.class, Query.class, com.mrs.ca.backend.Models.QueryResponse.class);
+        method.setAccessible(true);
+        String html = (String) method.invoke(emailService, client, query, response);
+
+        assertThat(html).contains("Client Response Received");
+        assertThat(html).contains("Jane Doe");
+        assertThat(html).contains("jane@example.com");
+        assertThat(html).contains("Document Verification");
+        assertThat(html).contains("#query123");
+        assertThat(html).contains("I have uploaded all requested documents.");
+        assertThat(html).contains("http://localhost:3000/admin/queries/query123");
+    }
 }

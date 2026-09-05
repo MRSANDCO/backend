@@ -110,4 +110,68 @@ class UserControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("User 'user01' not found"));
     }
+
+    // ===================== POST /api/user/{userId}/queries/{queryId}/responses =====================
+
+    @Test
+    @DisplayName("POST /api/user/{userId}/queries/{queryId}/responses — 201 on success")
+    void submitResponse_success() throws Exception {
+        com.mrs.ca.backend.Models.QueryResponse response = new com.mrs.ca.backend.Models.QueryResponse(
+                "q123", "user01", "user01", "John Doe", "j@m.com",
+                com.mrs.ca.backend.Models.QueryResponse.SenderRole.CLIENT, "Here is my reply."
+        );
+        response.setId("resp_1");
+
+        when(queryService.addClientResponse("q123", "user01", "Here is my reply.")).thenReturn(response);
+
+        mockMvc.perform(post("/api/user/user01/queries/q123/responses")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"Here is my reply.\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.response.message").value("Here is my reply."))
+                .andExpect(jsonPath("$.response.senderRole").value("CLIENT"));
+    }
+
+    @Test
+    @DisplayName("POST /api/user/{userId}/queries/{queryId}/responses — 400 on empty message")
+    void submitResponse_emptyMessage() throws Exception {
+        mockMvc.perform(post("/api/user/user01/queries/q123/responses")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"   \"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("Message cannot be empty"));
+    }
+
+    @Test
+    @DisplayName("POST /api/user/{userId}/queries/{queryId}/responses — 403 when user does not match path")
+    void submitResponse_forbiddenForOtherUser() throws Exception {
+        mockMvc.perform(post("/api/user/otherUser/queries/q123/responses")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"Sneaky reply\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("Access denied"));
+    }
+
+    // ===================== GET /api/user/{userId}/queries/{queryId}/conversation =====================
+
+    @Test
+    @DisplayName("GET /api/user/{userId}/queries/{queryId}/conversation — 200 on success")
+    void getConversation_success() throws Exception {
+        com.mrs.ca.backend.Models.Query query = new com.mrs.ca.backend.Models.Query();
+        query.setId("q123");
+        query.setSubject("Test Query");
+
+        com.mrs.ca.backend.dto.QueryConversationDto conversation =
+                new com.mrs.ca.backend.dto.QueryConversationDto(query, List.of());
+
+        when(queryService.getQueryConversation("q123", "user01", false)).thenReturn(conversation);
+
+        mockMvc.perform(get("/api/user/user01/queries/q123/conversation"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.query.id").value("q123"))
+                .andExpect(jsonPath("$.responses").isArray());
+
+        verify(queryService).markSeen("q123", "user01");
+    }
 }

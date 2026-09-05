@@ -1,6 +1,7 @@
 package com.mrs.ca.backend.Services;
 
 import com.mrs.ca.backend.Models.Query;
+import com.mrs.ca.backend.Models.QueryResponse;
 import com.mrs.ca.backend.Models.User;
 import com.mongodb.client.gridfs.model.GridFSFile;
 import org.bson.types.ObjectId;
@@ -33,6 +34,9 @@ public class EmailService {
 
     @Value("${app.resend.api-key:}")
     private String resendApiKey;
+
+    @Value("${app.admin.email:admin@mrsandco.in}")
+    private String adminEmail;
 
     @Autowired
     private GridFsTemplate gridFsTemplate;
@@ -128,6 +132,37 @@ public void logKeyDebug() {
         } catch (Exception e) {
             log.error("[EMAIL] Failed to send query notification to '{}': {}",
                     targetUser.getEmail(), e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Sends an email notification to the admin via Resend when a client responds to a query.
+     * Asynchronous execution — email failure does not affect or rollback response storage.
+     */
+    @Async
+    public void sendClientResponseNotification(User client, Query query, QueryResponse response) {
+        if (adminEmail == null || adminEmail.isBlank()) {
+            log.warn("[EMAIL] ADMIN_EMAIL is not configured. Skipping admin email notification.");
+            return;
+        }
+
+        if (resendApiKey == null || resendApiKey.isBlank()) {
+            log.warn("[EMAIL] RESEND_API_KEY is not configured. Skipping admin email notification.");
+            return;
+        }
+
+        try {
+            String subject = "Client Response Received – Query #" + query.getId();
+            String html = buildClientResponseHtmlEmail(client, query, response);
+
+            sendViaResend(adminEmail, subject, html);
+
+            log.info("[EMAIL] Admin notification sent to '{}' for client response on queryId='{}'",
+                    adminEmail, query.getId());
+
+        } catch (Exception e) {
+            log.error("[EMAIL] Failed to send admin notification for client response on queryId='{}': {}",
+                    query.getId(), e.getMessage(), e);
         }
     }
 
@@ -371,6 +406,166 @@ public void logKeyDebug() {
                 loginUrl,
                 loginUrl,
                 loginUrl
+        );
+    }
+
+    private String buildClientResponseHtmlEmail(User client, Query query, QueryResponse response) {
+        String clientName   = client != null && client.getFullName() != null && !client.getFullName().isBlank()
+                ? client.getFullName() : (client != null ? client.getUserId() : "Client");
+        String clientEmail  = client != null && client.getEmail() != null ? client.getEmail() : "N/A";
+        String clientId     = client != null ? client.getUserId() : "N/A";
+        String querySubject = query.getSubject() != null ? query.getSubject() : "No Subject";
+        String queryId      = query.getId() != null ? query.getId() : "";
+        String responseText = response.getMessage() != null ? response.getMessage() : "";
+        String respondedAt  = response.getCreatedAt() != null ? response.getCreatedAt().format(DATE_FMT) : "Just now";
+        String adminQueryUrl = frontendUrl.replaceAll("/$", "") + "/admin/queries/" + queryId;
+
+        return """
+                <!DOCTYPE html>
+                <html lang="en">
+                <head>
+                  <meta charset="UTF-8"/>
+                  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+                  <title>Client Response Received</title>
+                </head>
+                <body style="margin:0;padding:0;background:#f1f5f9;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
+
+                  <!-- Outer wrapper -->
+                  <table role="presentation" cellpadding="0" cellspacing="0" width="100%%"
+                         style="background:#f1f5f9;padding:40px 16px;">
+                    <tr><td align="center">
+
+                      <!-- Card -->
+                      <table role="presentation" cellpadding="0" cellspacing="0" width="600"
+                             style="max-width:600px;width:100%%;background:#ffffff;border-radius:16px;
+                                    overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+
+                        <!-- Header -->
+                        <tr>
+                          <td style="background:linear-gradient(135deg,#0f172a 0%%,#1e3a5f 100%%);
+                                     padding:36px 40px;text-align:center;">
+                            <div style="display:inline-block;background:rgba(255,255,255,0.12);
+                                        border-radius:50%%;padding:12px;margin-bottom:16px;">
+                              <div style="width:40px;height:40px;background:#ffffff;border-radius:50%%;
+                                          display:flex;align-items:center;justify-content:center;margin:auto;">
+                                <span style="font-size:20px;">💬</span>
+                              </div>
+                            </div>
+                            <h1 style="margin:0 0 4px;color:#ffffff;font-size:22px;font-weight:700;
+                                       letter-spacing:-0.3px;">Client Response Received</h1>
+                            <p style="margin:0;color:#93c5fd;font-size:13px;letter-spacing:0.04em;">
+                              MRS &amp; Co. Chartered Accountants
+                            </p>
+                          </td>
+                        </tr>
+
+                        <!-- Body -->
+                        <tr>
+                          <td style="padding:40px;">
+
+                            <p style="font-size:15px;color:#1f2937;margin:0 0 24px;">
+                              A client has responded to a query.
+                            </p>
+
+                            <!-- Summary Details Box -->
+                            <table role="presentation" cellpadding="0" cellspacing="0" width="100%%"
+                                   style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;
+                                          margin-bottom:24px;">
+                              <tr>
+                                <td style="padding:20px 24px;">
+                                  <table role="presentation" cellpadding="0" cellspacing="0" width="100%%">
+                                    <tr>
+                                      <td style="padding-bottom:10px;width:35%%;color:#64748b;font-size:13px;font-weight:600;">Client:</td>
+                                      <td style="padding-bottom:10px;color:#0f172a;font-size:14px;font-weight:600;">%s (%s)</td>
+                                    </tr>
+                                    <tr>
+                                      <td style="padding-bottom:10px;color:#64748b;font-size:13px;font-weight:600;">Email:</td>
+                                      <td style="padding-bottom:10px;color:#0f172a;font-size:14px;"><a href="mailto:%s" style="color:#2563eb;text-decoration:none;">%s</a></td>
+                                    </tr>
+                                    <tr>
+                                      <td style="padding-bottom:10px;color:#64748b;font-size:13px;font-weight:600;">Query Subject:</td>
+                                      <td style="padding-bottom:10px;color:#0f172a;font-size:14px;font-weight:700;">%s</td>
+                                    </tr>
+                                    <tr>
+                                      <td style="padding-bottom:10px;color:#64748b;font-size:13px;font-weight:600;">Query ID:</td>
+                                      <td style="padding-bottom:10px;color:#475569;font-size:13px;font-family:monospace;">#%s</td>
+                                    </tr>
+                                    <tr>
+                                      <td style="color:#64748b;font-size:13px;font-weight:600;">Responded On:</td>
+                                      <td style="color:#0f172a;font-size:13px;">%s</td>
+                                    </tr>
+                                  </table>
+                                </td>
+                              </tr>
+                            </table>
+
+                            <!-- Client's Message Highlight -->
+                            <div style="margin-bottom:32px;">
+                              <p style="margin:0 0 8px;font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;font-weight:700;">
+                                Client Response
+                              </p>
+                              <div style="background:#eff6ff;border-left:4px solid #2563eb;padding:16px 20px;border-radius:0 8px 8px 0;">
+                                <p style="margin:0;font-size:15px;color:#1e293b;line-height:1.6;white-space:pre-wrap;">%s</p>
+                              </div>
+                            </div>
+
+                            <!-- CTA Button -->
+                            <table role="presentation" cellpadding="0" cellspacing="0" width="100%%"
+                                   style="margin-bottom:32px;">
+                              <tr>
+                                <td align="center">
+                                  <a href="%s"
+                                     style="display:inline-block;background:linear-gradient(135deg,#2563eb,#1d4ed8);
+                                            color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;
+                                            padding:14px 40px;border-radius:10px;
+                                            box-shadow:0 4px 14px rgba(37,99,235,0.35);
+                                            letter-spacing:0.02em;">
+                                    View Query in Admin Dashboard
+                                  </a>
+                                </td>
+                              </tr>
+                            </table>
+
+                            <p style="font-size:12px;color:#94a3b8;text-align:center;
+                                       border-top:1px solid #e2e8f0;padding-top:20px;margin:0;">
+                              Or open directly in browser:<br/>
+                              <a href="%s" style="color:#2563eb;word-break:break-all;">%s</a>
+                            </p>
+
+                          </td>
+                        </tr>
+
+                        <!-- Footer -->
+                        <tr>
+                          <td style="background:#f8fafc;border-top:1px solid #e2e8f0;
+                                     padding:20px 40px;text-align:center;">
+                            <p style="margin:0 0 4px;font-size:12px;color:#64748b;">
+                              This is an automated notification from <strong>MRS &amp; Co. Chartered Accountants</strong>.
+                            </p>
+                          </td>
+                        </tr>
+
+                      </table>
+                      <!-- /Card -->
+
+                    </td></tr>
+                  </table>
+                  <!-- /Outer wrapper -->
+
+                </body>
+                </html>
+                """.formatted(
+                escapeHtml(clientName),
+                escapeHtml(clientId),
+                escapeHtml(clientEmail),
+                escapeHtml(clientEmail),
+                escapeHtml(querySubject),
+                escapeHtml(queryId),
+                respondedAt,
+                escapeHtml(responseText),
+                adminQueryUrl,
+                adminQueryUrl,
+                adminQueryUrl
         );
     }
 

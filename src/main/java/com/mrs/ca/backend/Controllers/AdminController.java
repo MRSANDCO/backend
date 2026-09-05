@@ -2,15 +2,20 @@ package com.mrs.ca.backend.Controllers;
 
 import com.mrs.ca.backend.Models.Document;
 import com.mrs.ca.backend.Models.Query;
+import com.mrs.ca.backend.Models.QueryResponse;
 import com.mrs.ca.backend.Models.User;
 import com.mrs.ca.backend.Services.AdminService;
 import com.mrs.ca.backend.Services.QueryService;
 import com.mrs.ca.backend.Services.WhatsAppService;
+import com.mrs.ca.backend.dto.QueryConversationDto;
+import com.mrs.ca.backend.dto.QueryResponseRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -329,6 +334,97 @@ public class AdminController {
             return ResponseEntity.ok(queries);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Get single query details for Admin.
+     */
+    @GetMapping("/queries/{queryId}")
+    public ResponseEntity<?> getQueryById(@PathVariable String queryId) {
+        try {
+            Query query = queryService.getQueryByIdForAdmin(queryId);
+            return ResponseEntity.ok(query);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Get complete conversation thread for a query (Admin view).
+     */
+    @GetMapping("/queries/{queryId}/conversation")
+    public ResponseEntity<?> getQueryConversation(@PathVariable String queryId) {
+        try {
+            QueryConversationDto conversation = queryService.getQueryConversation(queryId, null, true);
+            return ResponseEntity.ok(conversation);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Get all responses for a query (Admin view).
+     */
+    @GetMapping("/queries/{queryId}/responses")
+    public ResponseEntity<?> getQueryResponses(@PathVariable String queryId) {
+        try {
+            List<QueryResponse> responses = queryService.getQueryResponses(queryId, null, true);
+            return ResponseEntity.ok(responses);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Admin submits a response/reply to an open query.
+     */
+    @PostMapping("/queries/{queryId}/responses")
+    public ResponseEntity<?> submitAdminResponse(
+            @PathVariable String queryId,
+            @RequestBody QueryResponseRequest request) {
+        if (request == null || request.getMessage() == null || request.getMessage().trim().isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Message cannot be empty"));
+        }
+
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        String adminUsername = (auth != null && auth.getName() != null) ? auth.getName() : "admin";
+
+        try {
+            QueryResponse response = queryService.addAdminResponse(queryId, adminUsername, request.getMessage());
+            return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
+                    "success", true,
+                    "message", "Admin response submitted successfully",
+                    "response", response
+            ));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Update query status (e.g. RESOLVED, CLOSED, OPEN).
+     * Body: { "status": "RESOLVED" }
+     */
+    @PutMapping("/queries/{queryId}/status")
+    public ResponseEntity<?> updateQueryStatus(
+            @PathVariable String queryId,
+            @RequestBody Map<String, String> request) {
+        String statusStr = request.get("status");
+        if (statusStr == null || statusStr.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "status is required"));
+        }
+
+        try {
+            Query.QueryStatus newStatus = Query.QueryStatus.valueOf(statusStr.toUpperCase());
+            Query updated = queryService.updateQueryStatus(queryId, newStatus);
+            return ResponseEntity.ok(Map.of(
+                    "message", "Query status updated successfully",
+                    "queryId", updated.getId(),
+                    "status", updated.getStatus().name()
+            ));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Invalid status value or query: " + e.getMessage()));
         }
     }
 

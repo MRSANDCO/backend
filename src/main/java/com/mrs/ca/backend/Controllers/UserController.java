@@ -2,10 +2,14 @@ package com.mrs.ca.backend.Controllers;
 
 import com.mrs.ca.backend.Models.Document;
 import com.mrs.ca.backend.Models.Query;
+import com.mrs.ca.backend.Models.QueryResponse;
 import com.mrs.ca.backend.Models.User;
 import com.mrs.ca.backend.Services.QueryService;
 import com.mrs.ca.backend.Services.UserService;
+import com.mrs.ca.backend.dto.QueryConversationDto;
+import com.mrs.ca.backend.dto.QueryResponseRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -118,6 +122,70 @@ public class UserController {
             // Fetch the query, then mark as seen in one step
             Query query = queryService.markSeen(queryId, userId);
             return ResponseEntity.ok(query);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (SecurityException e) {
+            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Get the complete conversation thread for a query (query + ordered responses).
+     * Also automatically marks the query as SEEN if it was OPEN.
+     */
+    @GetMapping("/{userId}/queries/{queryId}/conversation")
+    public ResponseEntity<?> getQueryConversation(@PathVariable String userId,
+                                                  @PathVariable String queryId) {
+        if (!isAuthorized(userId)) return ResponseEntity.status(403).body(Map.of("error", "Access denied"));
+        try {
+            queryService.markSeen(queryId, userId);
+            QueryConversationDto conversation = queryService.getQueryConversation(queryId, userId, false);
+            return ResponseEntity.ok(conversation);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (SecurityException e) {
+            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Get all responses for a query.
+     */
+    @GetMapping("/{userId}/queries/{queryId}/responses")
+    public ResponseEntity<?> getQueryResponses(@PathVariable String userId,
+                                               @PathVariable String queryId) {
+        if (!isAuthorized(userId)) return ResponseEntity.status(403).body(Map.of("error", "Access denied"));
+        try {
+            List<QueryResponse> responses = queryService.getQueryResponses(queryId, userId, false);
+            return ResponseEntity.ok(responses);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (SecurityException e) {
+            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Submit a client response/reply to an existing query.
+     */
+    @PostMapping("/{userId}/queries/{queryId}/responses")
+    public ResponseEntity<?> submitResponse(
+            @PathVariable String userId,
+            @PathVariable String queryId,
+            @RequestBody QueryResponseRequest request) {
+        if (!isAuthorized(userId)) return ResponseEntity.status(403).body(Map.of("error", "Access denied"));
+
+        if (request == null || request.getMessage() == null || request.getMessage().trim().isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Message cannot be empty"));
+        }
+
+        try {
+            QueryResponse response = queryService.addClientResponse(queryId, userId, request.getMessage());
+            return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
+                    "success", true,
+                    "message", "Response submitted successfully",
+                    "response", response
+            ));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (SecurityException e) {

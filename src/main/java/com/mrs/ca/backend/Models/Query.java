@@ -13,7 +13,7 @@ import java.time.LocalDateTime;
 public class Query {
 
     public enum QueryType { TEXT, PDF }
-    public enum QueryStatus { OPEN, SEEN, CLOSED }
+    public enum QueryStatus { OPEN, SEEN, CLIENT_RESPONDED, ADMIN_RESPONDED, RESOLVED, CLOSED }
 
     @Id
     private String id;

@@ -2,9 +2,12 @@ package com.mrs.ca.backend.Services;
 
 import com.mongodb.client.gridfs.model.GridFSFile;
 import com.mrs.ca.backend.Models.Query;
+import com.mrs.ca.backend.Models.QueryResponse;
 import com.mrs.ca.backend.Models.User;
 import com.mrs.ca.backend.Repositories.QueryRepository;
+import com.mrs.ca.backend.Repositories.QueryResponseRepository;
 import com.mrs.ca.backend.Repositories.UserRepository;
+import com.mrs.ca.backend.dto.QueryConversationDto;
 import jakarta.servlet.http.HttpServletResponse;
 import org.bson.types.ObjectId;
 import org.slf4j.Logger;
@@ -29,6 +32,7 @@ public class QueryService {
     private String adminUsername;
 
     private final QueryRepository queryRepository;
+    private final QueryResponseRepository queryResponseRepository;
     private final UserRepository userRepository;
     private final GridFsTemplate gridFsTemplate;
     private final GridFsOperations gridFsOperations;
@@ -36,12 +40,14 @@ public class QueryService {
     private final WhatsAppService whatsAppService;
 
     public QueryService(QueryRepository queryRepository,
+                        QueryResponseRepository queryResponseRepository,
                         UserRepository userRepository,
                         GridFsTemplate gridFsTemplate,
                         GridFsOperations gridFsOperations,
                         EmailService emailService,
                         WhatsAppService whatsAppService) {
         this.queryRepository = queryRepository;
+        this.queryResponseRepository = queryResponseRepository;
         this.userRepository = userRepository;
         this.gridFsTemplate = gridFsTemplate;
         this.gridFsOperations = gridFsOperations;
@@ -182,7 +188,14 @@ public class QueryService {
     }
 
     /**
-     * Delete a query, removing its GridFS file if present.
+     * Get a single query by ID for Admin (no ownership check).
+     */
+    public Query getQueryByIdForAdmin(String queryId) {
+        return findQueryOrThrow(queryId);
+    }
+
+    /**
+     * Delete a query, removing its GridFS file if present and all associated responses.
      */
     public void deleteQuery(String queryId) {
         Query query = findQueryOrThrow(queryId);
@@ -194,6 +207,9 @@ public class QueryService {
             );
             log.info("[QUERY] GridFS file '{}' removed for queryId='{}'", query.getGridFsId(), queryId);
         }
+
+        queryResponseRepository.deleteByQueryId(queryId);
+        log.info("[QUERY] Associated responses deleted for queryId='{}'", queryId);
 
         queryRepository.delete(query);
         log.info("[QUERY] Query '{}' deleted by admin.", queryId);
@@ -270,6 +286,129 @@ public class QueryService {
         }
 
         log.info("[QUERY] Attachment streamed for queryId='{}' to userId='{}'", queryId, userId);
+    }
+
+    // ===================== Response & Conversation Operations =====================
+
+    /**
+     * Add a client response/reply to a query.
+     * Validates client ownership, stores the response in query_responses collection,
+     * updates the query status to CLIENT_RESPONDED, and sends an email notification
+     * to the admin asynchronously.
+     */
+    public QueryResponse addClientResponse(String queryId, String userId, String message) {
+        if (message == null || message.trim().isBlank()) {
+            throw new IllegalArgumentException("Response message cannot be empty.");
+        }
+
+        User user = findUserOrThrow(userId);
+        Query query = findQueryOrThrow(queryId);
+        validateOwnership(query, user, queryId, userId);
+
+        QueryResponse response = new QueryResponse(
+                query.getId(),
+                user.getUserId(),
+                user.getUserId(),
+                user.getFullName() != null && !user.getFullName().isBlank() ? user.getFullName() : user.getUserId(),
+                user.getEmail(),
+                QueryResponse.SenderRole.CLIENT,
+                message.trim()
+        );
+
+        QueryResponse savedResponse = queryResponseRepository.save(response);
+        log.info("[QUERY] Client '{}' replied to queryId='{}', responseId='{}'",
+                userId, queryId, savedResponse.getId());
+
+        // Update query status to CLIENT_RESPONDED
+        query.setStatus(Query.QueryStatus.CLIENT_RESPONDED);
+        queryRepository.save(query);
+
+        // Notify Admin via Resend Email (Async)
+        emailService.sendClientResponseNotification(user, query, savedResponse);
+
+        return savedResponse;
+    }
+
+    /**
+     * Add an admin response/reply to a query.
+     * Updates the query status to ADMIN_RESPONDED.
+     */
+    public QueryResponse addAdminResponse(String queryId, String adminUsernameParam, String message) {
+        if (message == null || message.trim().isBlank()) {
+            throw new IllegalArgumentException("Response message cannot be empty.");
+        }
+
+        Query query = findQueryOrThrow(queryId);
+
+        String effectiveAdmin = (adminUsernameParam != null && !adminUsernameParam.isBlank())
+                ? adminUsernameParam
+                : (adminUsername != null && !adminUsername.isBlank() ? adminUsername : "admin");
+
+        String clientId = query.getTargetUser() != null ? query.getTargetUser().getUserId() : null;
+        String senderDisplayName = "Admin (" + effectiveAdmin + ")";
+
+        QueryResponse response = new QueryResponse(
+                query.getId(),
+                clientId,
+                effectiveAdmin,
+                senderDisplayName,
+                null,
+                QueryResponse.SenderRole.ADMIN,
+                message.trim()
+        );
+
+        QueryResponse savedResponse = queryResponseRepository.save(response);
+        log.info("[QUERY] Admin '{}' replied to queryId='{}', responseId='{}'",
+                effectiveAdmin, queryId, savedResponse.getId());
+
+        // Update query status to ADMIN_RESPONDED
+        query.setStatus(Query.QueryStatus.ADMIN_RESPONDED);
+        queryRepository.save(query);
+
+        return savedResponse;
+    }
+
+    /**
+     * Get the full conversation thread for a query (the query details and all responses in chronological order).
+     */
+    public QueryConversationDto getQueryConversation(String queryId, String userId, boolean isAdmin) {
+        Query query;
+        if (!isAdmin) {
+            User user = findUserOrThrow(userId);
+            query = findQueryOrThrow(queryId);
+            validateOwnership(query, user, queryId, userId);
+        } else {
+            query = findQueryOrThrow(queryId);
+        }
+
+        List<QueryResponse> responses = queryResponseRepository.findByQueryIdOrderByCreatedAtAsc(queryId);
+        return new QueryConversationDto(query, responses);
+    }
+
+    /**
+     * Get all responses for a query ordered chronologically.
+     */
+    public List<QueryResponse> getQueryResponses(String queryId, String userId, boolean isAdmin) {
+        if (!isAdmin) {
+            User user = findUserOrThrow(userId);
+            Query query = findQueryOrThrow(queryId);
+            validateOwnership(query, user, queryId, userId);
+        } else {
+            findQueryOrThrow(queryId);
+        }
+
+        return queryResponseRepository.findByQueryIdOrderByCreatedAtAsc(queryId);
+    }
+
+    /**
+     * Update query status (e.g. mark as RESOLVED, CLOSED, etc.).
+     */
+    public Query updateQueryStatus(String queryId, Query.QueryStatus newStatus) {
+        Query query = findQueryOrThrow(queryId);
+        query.setStatus(newStatus);
+        Query saved = queryRepository.save(query);
+        log.info("[QUERY] Query '{}' status updated to '{}'", queryId, newStatus);
+        return saved;
     }
 
     // ===================== Admin — stream attachment (no ownership check) =====================
