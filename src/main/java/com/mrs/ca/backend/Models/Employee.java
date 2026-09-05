@@ -44,6 +44,12 @@ public class Employee {
     @Field("current_address")
     private String currentAddress;
 
+    @Field("father_mobile_number")
+    private String fatherMobileNumber;
+
+    @Field("resume_google_drive_link")
+    private String resumeGoogleDriveLink;
+
     @Field("aadhaar_document_url")
     private String aadhaarDocumentUrl;
 
@@ -164,6 +170,22 @@ public class Employee {
 
     public void setCurrentAddress(String currentAddress) {
         this.currentAddress = currentAddress;
+    }
+
+    public String getFatherMobileNumber() {
+        return fatherMobileNumber;
+    }
+
+    public void setFatherMobileNumber(String fatherMobileNumber) {
+        this.fatherMobileNumber = fatherMobileNumber;
+    }
+
+    public String getResumeGoogleDriveLink() {
+        return resumeGoogleDriveLink;
+    }
+
+    public void setResumeGoogleDriveLink(String resumeGoogleDriveLink) {
+        this.resumeGoogleDriveLink = resumeGoogleDriveLink;
     }
 
     public String getAadhaarDocumentUrl() {

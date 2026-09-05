@@ -18,6 +18,8 @@ public class EmployeeProfileResponse {
     private LocalDate dateOfJoining;
     private String permanentAddress;
     private String currentAddress;
+    private String fatherMobileNumber;
+    private String resumeGoogleDriveLink;
     private String aadhaarDocumentUrl;
     private String aadhaarFileName;
     private Long aadhaarFileSize;
@@ -109,6 +111,22 @@ public class EmployeeProfileResponse {
 
     public void setCurrentAddress(String currentAddress) {
         this.currentAddress = currentAddress;
+    }
+
+    public String getFatherMobileNumber() {
+        return fatherMobileNumber;
+    }
+
+    public void setFatherMobileNumber(String fatherMobileNumber) {
+        this.fatherMobileNumber = fatherMobileNumber;
+    }
+
+    public String getResumeGoogleDriveLink() {
+        return resumeGoogleDriveLink;
+    }
+
+    public void setResumeGoogleDriveLink(String resumeGoogleDriveLink) {
+        this.resumeGoogleDriveLink = resumeGoogleDriveLink;
     }
 
     public String getAadhaarDocumentUrl() {

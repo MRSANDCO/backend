@@ -24,4 +24,6 @@ public interface EmployeeRepository extends MongoRepository<Employee, String> {
 
     @Query("{ '$or': [ { 'name': { $regex: ?0, $options: 'i' } }, { 'employee_id': { $regex: ?0, $options: 'i' } }, { 'mobile_number': { $regex: ?0, $options: 'i' } } ] }")
     Page<Employee> searchEmployees(String query, Pageable pageable);
+
+    void deleteByEmployeeId(String employeeId);
 }

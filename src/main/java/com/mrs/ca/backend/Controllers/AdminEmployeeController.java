@@ -156,6 +156,23 @@ public class AdminEmployeeController {
     }
 
     /**
+     * Permanently delete an employee — removes profile, user account, and GridFS Aadhaar document.
+     * ADMIN only — enforced at security config level (no EMPLOYEE role can reach this endpoint).
+     */
+    @DeleteMapping("/{employeeId}")
+    public ResponseEntity<?> deleteEmployee(@PathVariable String employeeId) {
+        try {
+            employeeService.deleteEmployee(employeeId);
+            return ResponseEntity.ok(Map.of(
+                    "message", "Employee deleted successfully",
+                    "employeeId", employeeId
+            ));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
      * Reject employee's uploaded document.
      */
     @PostMapping("/{employeeId}/document/reject")

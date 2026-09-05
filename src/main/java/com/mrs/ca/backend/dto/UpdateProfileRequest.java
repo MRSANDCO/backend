@@ -12,6 +12,8 @@ public class UpdateProfileRequest {
     private LocalDate dateOfJoining;
     private String permanentAddress;
     private String currentAddress;
+    private String fatherMobileNumber;
+    private String resumeGoogleDriveLink;
 
     public UpdateProfileRequest() {
     }
@@ -78,5 +80,21 @@ public class UpdateProfileRequest {
 
     public void setCurrentAddress(String currentAddress) {
         this.currentAddress = currentAddress;
+    }
+
+    public String getFatherMobileNumber() {
+        return fatherMobileNumber;
+    }
+
+    public void setFatherMobileNumber(String fatherMobileNumber) {
+        this.fatherMobileNumber = fatherMobileNumber;
+    }
+
+    public String getResumeGoogleDriveLink() {
+        return resumeGoogleDriveLink;
+    }
+
+    public void setResumeGoogleDriveLink(String resumeGoogleDriveLink) {
+        this.resumeGoogleDriveLink = resumeGoogleDriveLink;
     }
 }

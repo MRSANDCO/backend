@@ -42,6 +42,8 @@ public class EmployeeService {
     private static final Pattern MOBILE_PATTERN = Pattern.compile("^[6-9]\\d{9}$");
     private static final Pattern AADHAAR_PATTERN = Pattern.compile("^\\d{12}$");
     private static final Pattern PAN_PATTERN = Pattern.compile("^[A-Z]{5}[0-9]{4}[A-Z]{1}$");
+    private static final Pattern DRIVE_URL_PATTERN = Pattern.compile(
+            "^https://(drive|docs)\\.google\\.com/.+", Pattern.CASE_INSENSITIVE);
 
     private final EmployeeRepository employeeRepository;
     private final UserRepository userRepository;
@@ -410,6 +412,33 @@ public class EmployeeService {
     // Helpers & Validation
     // =========================================================================
 
+    /**
+     * Admin permanently deletes an employee: removes Employee doc, User account, and GridFS Aadhaar document.
+     */
+    public void deleteEmployee(String employeeId) {
+        Employee employee = findEmployeeOrThrow(employeeId);
+
+        // Delete GridFS Aadhaar document if present
+        if (employee.getAadhaarGridFsId() != null && !employee.getAadhaarGridFsId().isBlank()) {
+            try {
+                org.bson.types.ObjectId gridFsId = new org.bson.types.ObjectId(employee.getAadhaarGridFsId());
+                gridFsTemplate.delete(new org.springframework.data.mongodb.core.query.Query(
+                        org.springframework.data.mongodb.core.query.Criteria.where("_id").is(gridFsId)));
+                log.info("Deleted GridFS Aadhaar document for employee {}", employeeId);
+            } catch (Exception e) {
+                log.warn("Could not delete GridFS document for employee {}: {}", employeeId, e.getMessage());
+            }
+        }
+
+        // Delete User account (login credentials)
+        userRepository.deleteByUserId(employeeId);
+        log.info("Deleted user account for employee {}", employeeId);
+
+        // Delete Employee document
+        employeeRepository.deleteByEmployeeId(employeeId);
+        log.info("Deleted employee profile for {}", employeeId);
+    }
+
     public Employee findEmployeeOrThrow(String employeeId) {
         return employeeRepository.findByEmployeeId(employeeId)
                 .orElseThrow(() -> new IllegalArgumentException("Employee with ID '" + employeeId + "' not found"));
@@ -452,6 +481,20 @@ public class EmployeeService {
         if (request.getCurrentAddress() != null && !request.getCurrentAddress().trim().isBlank()) {
             employee.setCurrentAddress(request.getCurrentAddress().trim());
         }
+        if (request.getFatherMobileNumber() != null && !request.getFatherMobileNumber().trim().isBlank()) {
+            String fatherMobile = cleanMobile(request.getFatherMobileNumber());
+            if (!MOBILE_PATTERN.matcher(fatherMobile).matches()) {
+                throw new IllegalArgumentException("Invalid father's mobile number. Must be 10 digits");
+            }
+            employee.setFatherMobileNumber(fatherMobile);
+        }
+        if (request.getResumeGoogleDriveLink() != null && !request.getResumeGoogleDriveLink().trim().isBlank()) {
+            String link = request.getResumeGoogleDriveLink().trim();
+            if (!DRIVE_URL_PATTERN.matcher(link).matches()) {
+                throw new IllegalArgumentException("Invalid resume link. Must be a valid Google Drive or Google Docs URL (e.g. https://drive.google.com/...)");
+            }
+            employee.setResumeGoogleDriveLink(link);
+        }
     }
 
     private void validateCompletenessForSubmission(Employee employee) {
@@ -478,6 +521,9 @@ public class EmployeeService {
         }
         if (employee.getCurrentAddress() == null || employee.getCurrentAddress().isBlank()) {
             throw new IllegalArgumentException("Current Address is required for profile submission");
+        }
+        if (employee.getFatherMobileNumber() == null || employee.getFatherMobileNumber().isBlank()) {
+            throw new IllegalArgumentException("Father's Mobile Number is required for profile submission");
         }
         if (employee.getAadhaarGridFsId() == null || employee.getAadhaarGridFsId().isBlank()) {
             throw new IllegalArgumentException("Aadhaar/ID Proof PDF document must be uploaded before submitting profile");
@@ -529,6 +575,8 @@ public class EmployeeService {
         dto.setDateOfJoining(employee.getDateOfJoining());
         dto.setPermanentAddress(employee.getPermanentAddress());
         dto.setCurrentAddress(employee.getCurrentAddress());
+        dto.setFatherMobileNumber(employee.getFatherMobileNumber());
+        dto.setResumeGoogleDriveLink(employee.getResumeGoogleDriveLink());
         dto.setAadhaarDocumentUrl(employee.getAadhaarDocumentUrl());
         dto.setAadhaarFileName(employee.getAadhaarFileName());
         dto.setAadhaarFileSize(employee.getAadhaarFileSize());
