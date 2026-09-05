@@ -118,4 +118,29 @@ class EmailServiceTest {
         assertThat(html).contains("I have uploaded all requested documents.");
         assertThat(html).contains("http://localhost:3000/admin/queries/query123");
     }
+
+    @Test
+    void testBuildClientResponseHtmlEmail_WithAttachment() throws Exception {
+        User client = new User("client01", "password", "Jane Doe", "jane@example.com", "1234567890");
+        Query query = new Query();
+        query.setId("query123");
+        query.setSubject("Financial Statements");
+
+        com.mrs.ca.backend.Models.QueryResponse response = new com.mrs.ca.backend.Models.QueryResponse(
+                "query123", "client01", "client01", "Jane Doe", "jane@example.com",
+                com.mrs.ca.backend.Models.QueryResponse.SenderRole.CLIENT,
+                "Please find my spreadsheet attached.",
+                "grid_fs_id_999", "balance_sheet.xlsx", 50000L,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        );
+        response.setCreatedAt(java.time.LocalDateTime.of(2026, 9, 5, 11, 0));
+
+        Method method = EmailService.class.getDeclaredMethod("buildClientResponseHtmlEmail", User.class, Query.class, com.mrs.ca.backend.Models.QueryResponse.class);
+        method.setAccessible(true);
+        String html = (String) method.invoke(emailService, client, query, response);
+
+        assertThat(html).contains("Attachment (Find below the mail):");
+        assertThat(html).contains("balance_sheet.xlsx");
+        assertThat(html).contains("Please find my spreadsheet attached.");
+    }
 }

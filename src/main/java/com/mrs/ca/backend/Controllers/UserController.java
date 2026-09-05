@@ -10,8 +10,10 @@ import com.mrs.ca.backend.dto.QueryConversationDto;
 import com.mrs.ca.backend.dto.QueryResponseRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -166,10 +168,10 @@ public class UserController {
     }
 
     /**
-     * Submit a client response/reply to an existing query.
+     * Submit a client response/reply to an existing query via JSON (text only).
      */
-    @PostMapping("/{userId}/queries/{queryId}/responses")
-    public ResponseEntity<?> submitResponse(
+    @PostMapping(value = "/{userId}/queries/{queryId}/responses", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<?> submitJsonResponse(
             @PathVariable String userId,
             @PathVariable String queryId,
             @RequestBody QueryResponseRequest request) {
@@ -180,7 +182,39 @@ public class UserController {
         }
 
         try {
-            QueryResponse response = queryService.addClientResponse(queryId, userId, request.getMessage());
+            QueryResponse response = queryService.addClientResponse(queryId, userId, request.getMessage(), null);
+            return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
+                    "success", true,
+                    "message", "Response submitted successfully",
+                    "response", response
+            ));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (SecurityException e) {
+            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Submit a client response/reply to an existing query with an optional attachment (PDF, Excel, Image, etc.).
+     */
+    @PostMapping(value = "/{userId}/queries/{queryId}/responses", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> submitMultipartResponse(
+            @PathVariable String userId,
+            @PathVariable String queryId,
+            @RequestParam(value = "message", required = false) String message,
+            @RequestParam(value = "file", required = false) MultipartFile file) {
+        if (!isAuthorized(userId)) return ResponseEntity.status(403).body(Map.of("error", "Access denied"));
+
+        boolean hasMessage = message != null && !message.trim().isBlank();
+        boolean hasFile = file != null && !file.isEmpty();
+
+        if (!hasMessage && !hasFile) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Message or attachment must be provided"));
+        }
+
+        try {
+            QueryResponse response = queryService.addClientResponse(queryId, userId, message, file);
             return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
                     "success", true,
                     "message", "Response submitted successfully",
@@ -214,7 +248,7 @@ public class UserController {
     }
 
     /**
-     * Download the PDF attachment of a query.
+     * Download the attachment of a query.
      */
     @GetMapping("/{userId}/queries/{queryId}/download")
     public void downloadQueryFile(@PathVariable String userId,
@@ -226,6 +260,27 @@ public class UserController {
         }
         try {
             queryService.streamQueryFile(queryId, userId, response);
+        } catch (IllegalArgumentException e) {
+            response.sendError(HttpServletResponse.SC_BAD_REQUEST, e.getMessage());
+        } catch (SecurityException e) {
+            response.sendError(HttpServletResponse.SC_FORBIDDEN, e.getMessage());
+        }
+    }
+
+    /**
+     * Download the attachment of a query response.
+     */
+    @GetMapping("/{userId}/queries/{queryId}/responses/{responseId}/download")
+    public void downloadResponseAttachment(@PathVariable String userId,
+                                           @PathVariable String queryId,
+                                           @PathVariable String responseId,
+                                           HttpServletResponse response) throws IOException {
+        if (!isAuthorized(userId)) {
+            response.sendError(HttpServletResponse.SC_FORBIDDEN, "Access denied");
+            return;
+        }
+        try {
+            queryService.streamResponseFile(queryId, responseId, userId, response);
         } catch (IllegalArgumentException e) {
             response.sendError(HttpServletResponse.SC_BAD_REQUEST, e.getMessage());
         } catch (SecurityException e) {

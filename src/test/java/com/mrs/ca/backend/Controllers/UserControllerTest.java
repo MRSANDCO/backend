@@ -114,15 +114,15 @@ class UserControllerTest {
     // ===================== POST /api/user/{userId}/queries/{queryId}/responses =====================
 
     @Test
-    @DisplayName("POST /api/user/{userId}/queries/{queryId}/responses — 201 on success")
-    void submitResponse_success() throws Exception {
+    @DisplayName("POST /api/user/{userId}/queries/{queryId}/responses (JSON) — 201 on success")
+    void submitJsonResponse_success() throws Exception {
         com.mrs.ca.backend.Models.QueryResponse response = new com.mrs.ca.backend.Models.QueryResponse(
                 "q123", "user01", "user01", "John Doe", "j@m.com",
                 com.mrs.ca.backend.Models.QueryResponse.SenderRole.CLIENT, "Here is my reply."
         );
         response.setId("resp_1");
 
-        when(queryService.addClientResponse("q123", "user01", "Here is my reply.")).thenReturn(response);
+        when(queryService.addClientResponse(eq("q123"), eq("user01"), eq("Here is my reply."), isNull())).thenReturn(response);
 
         mockMvc.perform(post("/api/user/user01/queries/q123/responses")
                         .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
@@ -131,6 +131,32 @@ class UserControllerTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.response.message").value("Here is my reply."))
                 .andExpect(jsonPath("$.response.senderRole").value("CLIENT"));
+    }
+
+    @Test
+    @DisplayName("POST /api/user/{userId}/queries/{queryId}/responses (Multipart with Excel) — 201 on success")
+    void submitMultipartResponse_success() throws Exception {
+        org.springframework.mock.web.MockMultipartFile file = new org.springframework.mock.web.MockMultipartFile(
+                "file", "report.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "excel content".getBytes()
+        );
+
+        com.mrs.ca.backend.Models.QueryResponse response = new com.mrs.ca.backend.Models.QueryResponse(
+                "q123", "user01", "user01", "John Doe", "j@m.com",
+                com.mrs.ca.backend.Models.QueryResponse.SenderRole.CLIENT, "Attached is the spreadsheet.",
+                "grid_1", "report.xlsx", 100L, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        );
+        response.setId("resp_2");
+
+        when(queryService.addClientResponse(eq("q123"), eq("user01"), eq("Attached is the spreadsheet."), any())).thenReturn(response);
+
+        mockMvc.perform(multipart("/api/user/user01/queries/q123/responses")
+                        .file(file)
+                        .param("message", "Attached is the spreadsheet."))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.response.fileName").value("report.xlsx"));
     }
 
     @Test
@@ -151,6 +177,19 @@ class UserControllerTest {
                         .content("{\"message\":\"Sneaky reply\"}"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error").value("Access denied"));
+    }
+
+    // ===================== GET /api/user/{userId}/queries/{queryId}/responses/{respId}/download =====================
+
+    @Test
+    @DisplayName("GET /api/user/{userId}/queries/{queryId}/responses/{respId}/download — 200 on success")
+    void downloadResponseAttachment_success() throws Exception {
+        doNothing().when(queryService).streamResponseFile(eq("q123"), eq("resp_1"), eq("user01"), any());
+
+        mockMvc.perform(get("/api/user/user01/queries/q123/responses/resp_1/download"))
+                .andExpect(status().isOk());
+
+        verify(queryService).streamResponseFile(eq("q123"), eq("resp_1"), eq("user01"), any());
     }
 
     // ===================== GET /api/user/{userId}/queries/{queryId}/conversation =====================

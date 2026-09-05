@@ -229,14 +229,96 @@ class QueryServiceTest {
     }
 
     @Test
-    void testDeleteQuery_CascadesResponses() {
+    void testAddClientResponse_WithAttachment_Success() throws Exception {
         Query query = new Query();
         query.setId("q_100");
+        query.setSubject("Documents required");
+        query.setTargetUser(targetUser);
+        query.setStatus(Query.QueryStatus.OPEN);
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "tax_return.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "dummy excel content".getBytes()
+        );
+        ObjectId gridFsId = new ObjectId();
+
+        when(userRepository.findByUserId("client1")).thenReturn(Optional.of(targetUser));
+        when(queryRepository.findById("q_100")).thenReturn(Optional.of(query));
+        when(gridFsTemplate.store(any(InputStream.class), eq("tax_return.xlsx"), eq("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))).thenReturn(gridFsId);
+        when(queryResponseRepository.save(any(QueryResponse.class))).thenAnswer(inv -> {
+            QueryResponse r = inv.getArgument(0);
+            r.setId("resp_with_file");
+            return r;
+        });
+        when(queryRepository.save(any(Query.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        QueryResponse resp = queryService.addClientResponse("q_100", "client1", "Please find attached sheet.", file);
+
+        assertThat(resp).isNotNull();
+        assertThat(resp.getMessage()).isEqualTo("Please find attached sheet.");
+        assertThat(resp.getFileName()).isEqualTo("tax_return.xlsx");
+        assertThat(resp.getGridFsId()).isEqualTo(gridFsId.toHexString());
+        assertThat(resp.getFileType()).isEqualTo("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        assertThat(query.getStatus()).isEqualTo(Query.QueryStatus.CLIENT_RESPONDED);
+
+        verify(queryRepository).save(query);
+        verify(emailService).sendClientResponseNotification(eq(targetUser), eq(query), eq(resp));
+    }
+
+    @Test
+    void testAddAdminResponse_WithAttachment_Success() throws Exception {
+        Query query = new Query();
+        query.setId("q_100");
+        query.setSubject("Documents required");
+        query.setTargetUser(targetUser);
+        query.setStatus(Query.QueryStatus.CLIENT_RESPONDED);
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "audit_report.pdf",
+                "application/pdf",
+                "dummy pdf content".getBytes()
+        );
+        ObjectId gridFsId = new ObjectId();
 
         when(queryRepository.findById("q_100")).thenReturn(Optional.of(query));
+        when(gridFsTemplate.store(any(InputStream.class), eq("audit_report.pdf"), eq("application/pdf"))).thenReturn(gridFsId);
+        when(queryResponseRepository.save(any(QueryResponse.class))).thenAnswer(inv -> {
+            QueryResponse r = inv.getArgument(0);
+            r.setId("resp_admin_file");
+            return r;
+        });
+        when(queryRepository.save(any(Query.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        QueryResponse resp = queryService.addAdminResponse("q_100", "admin", "Here is your report.", file);
+
+        assertThat(resp).isNotNull();
+        assertThat(resp.getMessage()).isEqualTo("Here is your report.");
+        assertThat(resp.getFileName()).isEqualTo("audit_report.pdf");
+        assertThat(resp.getGridFsId()).isEqualTo(gridFsId.toHexString());
+        assertThat(resp.getSenderRole()).isEqualTo(QueryResponse.SenderRole.ADMIN);
+        assertThat(query.getStatus()).isEqualTo(Query.QueryStatus.ADMIN_RESPONDED);
+
+        verify(queryRepository).save(query);
+    }
+
+    @Test
+    void testDeleteQuery_CascadesResponsesAndGridFsFiles() {
+        Query query = new Query();
+        query.setId("q_100");
+        query.setGridFsId("507f1f77bcf86cd799439011");
+
+        QueryResponse respWithGridFs = new QueryResponse();
+        respWithGridFs.setId("r1");
+        respWithGridFs.setGridFsId("507f1f77bcf86cd799439012");
+
+        when(queryRepository.findById("q_100")).thenReturn(Optional.of(query));
+        when(queryResponseRepository.findByQueryIdOrderByCreatedAtAsc("q_100"))
+                .thenReturn(java.util.List.of(respWithGridFs));
 
         queryService.deleteQuery("q_100");
 
+        verify(gridFsTemplate, times(2)).delete(any(org.springframework.data.mongodb.core.query.Query.class));
         verify(queryResponseRepository).deleteByQueryId("q_100");
         verify(queryRepository).delete(query);
     }

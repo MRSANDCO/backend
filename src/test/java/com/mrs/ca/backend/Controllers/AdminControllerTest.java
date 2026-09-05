@@ -199,15 +199,15 @@ class AdminControllerTest {
     // ===================== POST /api/admin/queries/{queryId}/responses =====================
 
     @Test
-    @DisplayName("POST /api/admin/queries/{queryId}/responses — 201 on success")
-    void submitAdminResponse_success() throws Exception {
+    @DisplayName("POST /api/admin/queries/{queryId}/responses (JSON) — 201 on success")
+    void submitAdminJsonResponse_success() throws Exception {
         com.mrs.ca.backend.Models.QueryResponse response = new com.mrs.ca.backend.Models.QueryResponse(
                 "q123", "user01", "admin", "Admin (admin)", null,
                 com.mrs.ca.backend.Models.QueryResponse.SenderRole.ADMIN, "Acknowledged."
         );
         response.setId("resp_admin_1");
 
-        when(queryService.addAdminResponse(eq("q123"), any(), eq("Acknowledged."))).thenReturn(response);
+        when(queryService.addAdminResponse(eq("q123"), any(), eq("Acknowledged."), isNull())).thenReturn(response);
 
         mockMvc.perform(post("/api/admin/queries/q123/responses")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -216,6 +216,45 @@ class AdminControllerTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.response.message").value("Acknowledged."))
                 .andExpect(jsonPath("$.response.senderRole").value("ADMIN"));
+    }
+
+    @Test
+    @DisplayName("POST /api/admin/queries/{queryId}/responses (Multipart with Excel) — 201 on success")
+    void submitAdminMultipartResponse_success() throws Exception {
+        org.springframework.mock.web.MockMultipartFile file = new org.springframework.mock.web.MockMultipartFile(
+                "file", "computation.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "excel data".getBytes()
+        );
+
+        com.mrs.ca.backend.Models.QueryResponse response = new com.mrs.ca.backend.Models.QueryResponse(
+                "q123", "user01", "admin", "Admin (admin)", null,
+                com.mrs.ca.backend.Models.QueryResponse.SenderRole.ADMIN, "Here is the calculation.",
+                "grid_admin_1", "computation.xlsx", 200L, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        );
+        response.setId("resp_admin_2");
+
+        when(queryService.addAdminResponse(eq("q123"), any(), eq("Here is the calculation."), any())).thenReturn(response);
+
+        mockMvc.perform(multipart("/api/admin/queries/q123/responses")
+                        .file(file)
+                        .param("message", "Here is the calculation."))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.response.fileName").value("computation.xlsx"));
+    }
+
+    // ===================== GET /api/admin/queries/{queryId}/responses/{respId}/download =====================
+
+    @Test
+    @DisplayName("GET /api/admin/queries/{queryId}/responses/{respId}/download — 200 on success")
+    void downloadAdminResponseAttachment_success() throws Exception {
+        doNothing().when(queryService).streamResponseFileForAdmin(eq("q123"), eq("resp_admin_1"), any());
+
+        mockMvc.perform(get("/api/admin/queries/q123/responses/resp_admin_1/download"))
+                .andExpect(status().isOk());
+
+        verify(queryService).streamResponseFileForAdmin(eq("q123"), eq("resp_admin_1"), any());
     }
 
     // ===================== PUT /api/admin/queries/{queryId}/status =====================

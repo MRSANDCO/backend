@@ -208,6 +208,17 @@ public class QueryService {
             log.info("[QUERY] GridFS file '{}' removed for queryId='{}'", query.getGridFsId(), queryId);
         }
 
+        List<QueryResponse> responses = queryResponseRepository.findByQueryIdOrderByCreatedAtAsc(queryId);
+        for (QueryResponse resp : responses) {
+            if (resp.getGridFsId() != null && !resp.getGridFsId().isBlank()) {
+                gridFsTemplate.delete(
+                        new org.springframework.data.mongodb.core.query.Query(
+                                Criteria.where("_id").is(new ObjectId(resp.getGridFsId())))
+                );
+                log.info("[QUERY] GridFS file '{}' removed for responseId='{}'", resp.getGridFsId(), resp.getId());
+            }
+        }
+
         queryResponseRepository.deleteByQueryId(queryId);
         log.info("[QUERY] Associated responses deleted for queryId='{}'", queryId);
 
@@ -291,19 +302,50 @@ public class QueryService {
     // ===================== Response & Conversation Operations =====================
 
     /**
-     * Add a client response/reply to a query.
-     * Validates client ownership, stores the response in query_responses collection,
-     * updates the query status to CLIENT_RESPONDED, and sends an email notification
-     * to the admin asynchronously.
+     * Add a client response/reply to a query without an attachment.
      */
     public QueryResponse addClientResponse(String queryId, String userId, String message) {
-        if (message == null || message.trim().isBlank()) {
-            throw new IllegalArgumentException("Response message cannot be empty.");
+        return addClientResponse(queryId, userId, message, null);
+    }
+
+    /**
+     * Add a client response/reply to a query with an optional document attachment (PDF, Excel, Image, etc.).
+     * Validates client ownership, stores the attachment in GridFS (if provided), stores the response in
+     * query_responses collection, updates the query status to CLIENT_RESPONDED, and sends an email notification
+     * with the attachment to the admin asynchronously.
+     */
+    public QueryResponse addClientResponse(String queryId, String userId, String message, MultipartFile file) {
+        boolean hasMessage = message != null && !message.trim().isBlank();
+        boolean hasFile = file != null && !file.isEmpty();
+
+        if (!hasMessage && !hasFile) {
+            throw new IllegalArgumentException("Response message or attachment must be provided.");
         }
 
         User user = findUserOrThrow(userId);
         Query query = findQueryOrThrow(queryId);
         validateOwnership(query, user, queryId, userId);
+
+        String gridFsId = null;
+        String fileName = null;
+        Long fileSize = null;
+        String fileType = null;
+
+        if (hasFile) {
+            fileName = file.getOriginalFilename() != null ? file.getOriginalFilename() : "attachment";
+            fileType = file.getContentType() != null ? file.getContentType() : resolveContentType(fileName);
+            fileSize = file.getSize();
+            try {
+                ObjectId storedId = gridFsTemplate.store(file.getInputStream(), fileName, fileType);
+                gridFsId = storedId.toHexString();
+                log.info("[QUERY] Client response attachment '{}' stored with GridFS ID '{}'", fileName, gridFsId);
+            } catch (IOException e) {
+                log.error("[QUERY] Failed to store attachment for client queryId='{}': {}", queryId, e.getMessage(), e);
+                throw new RuntimeException("Failed to store attachment: " + e.getMessage(), e);
+            }
+        }
+
+        String effectiveMessage = hasMessage ? message.trim() : "";
 
         QueryResponse response = new QueryResponse(
                 query.getId(),
@@ -312,12 +354,16 @@ public class QueryService {
                 user.getFullName() != null && !user.getFullName().isBlank() ? user.getFullName() : user.getUserId(),
                 user.getEmail(),
                 QueryResponse.SenderRole.CLIENT,
-                message.trim()
+                effectiveMessage,
+                gridFsId,
+                fileName,
+                fileSize,
+                fileType
         );
 
         QueryResponse savedResponse = queryResponseRepository.save(response);
-        log.info("[QUERY] Client '{}' replied to queryId='{}', responseId='{}'",
-                userId, queryId, savedResponse.getId());
+        log.info("[QUERY] Client '{}' replied to queryId='{}', responseId='{}' (hasAttachment={})",
+                userId, queryId, savedResponse.getId(), gridFsId != null);
 
         // Update query status to CLIENT_RESPONDED
         query.setStatus(Query.QueryStatus.CLIENT_RESPONDED);
@@ -330,12 +376,23 @@ public class QueryService {
     }
 
     /**
-     * Add an admin response/reply to a query.
+     * Add an admin response/reply to a query without an attachment.
      * Updates the query status to ADMIN_RESPONDED.
      */
     public QueryResponse addAdminResponse(String queryId, String adminUsernameParam, String message) {
-        if (message == null || message.trim().isBlank()) {
-            throw new IllegalArgumentException("Response message cannot be empty.");
+        return addAdminResponse(queryId, adminUsernameParam, message, null);
+    }
+
+    /**
+     * Add an admin response/reply to a query with an optional attachment.
+     * Updates the query status to ADMIN_RESPONDED.
+     */
+    public QueryResponse addAdminResponse(String queryId, String adminUsernameParam, String message, MultipartFile file) {
+        boolean hasMessage = message != null && !message.trim().isBlank();
+        boolean hasFile = file != null && !file.isEmpty();
+
+        if (!hasMessage && !hasFile) {
+            throw new IllegalArgumentException("Response message or attachment must be provided.");
         }
 
         Query query = findQueryOrThrow(queryId);
@@ -347,6 +404,27 @@ public class QueryService {
         String clientId = query.getTargetUser() != null ? query.getTargetUser().getUserId() : null;
         String senderDisplayName = "Admin (" + effectiveAdmin + ")";
 
+        String gridFsId = null;
+        String fileName = null;
+        Long fileSize = null;
+        String fileType = null;
+
+        if (hasFile) {
+            fileName = file.getOriginalFilename() != null ? file.getOriginalFilename() : "attachment";
+            fileType = file.getContentType() != null ? file.getContentType() : resolveContentType(fileName);
+            fileSize = file.getSize();
+            try {
+                ObjectId storedId = gridFsTemplate.store(file.getInputStream(), fileName, fileType);
+                gridFsId = storedId.toHexString();
+                log.info("[QUERY] Admin response attachment '{}' stored with GridFS ID '{}'", fileName, gridFsId);
+            } catch (IOException e) {
+                log.error("[QUERY] Failed to store attachment for admin queryId='{}': {}", queryId, e.getMessage(), e);
+                throw new RuntimeException("Failed to store attachment: " + e.getMessage(), e);
+            }
+        }
+
+        String effectiveMessage = hasMessage ? message.trim() : "";
+
         QueryResponse response = new QueryResponse(
                 query.getId(),
                 clientId,
@@ -354,18 +432,70 @@ public class QueryService {
                 senderDisplayName,
                 null,
                 QueryResponse.SenderRole.ADMIN,
-                message.trim()
+                effectiveMessage,
+                gridFsId,
+                fileName,
+                fileSize,
+                fileType
         );
 
         QueryResponse savedResponse = queryResponseRepository.save(response);
-        log.info("[QUERY] Admin '{}' replied to queryId='{}', responseId='{}'",
-                effectiveAdmin, queryId, savedResponse.getId());
+        log.info("[QUERY] Admin '{}' replied to queryId='{}', responseId='{}' (hasAttachment={})",
+                effectiveAdmin, queryId, savedResponse.getId(), gridFsId != null);
 
         // Update query status to ADMIN_RESPONDED
         query.setStatus(Query.QueryStatus.ADMIN_RESPONDED);
         queryRepository.save(query);
 
         return savedResponse;
+    }
+
+    /**
+     * Stream a response's file attachment from GridFS to the HTTP response for a client.
+     */
+    public void streamResponseFile(String queryId, String responseId, String userId, HttpServletResponse response)
+            throws IOException {
+        User user = findUserOrThrow(userId);
+        Query query = findQueryOrThrow(queryId);
+        validateOwnership(query, user, queryId, userId);
+
+        QueryResponse queryResponse = queryResponseRepository.findById(responseId)
+                .orElseThrow(() -> new IllegalArgumentException("Response '" + responseId + "' not found"));
+
+        if (!query.getId().equals(queryResponse.getQueryId())) {
+            throw new IllegalArgumentException("Response does not belong to the specified query.");
+        }
+
+        if (queryResponse.getGridFsId() == null || queryResponse.getGridFsId().isBlank()) {
+            throw new IllegalArgumentException("This response has no file attachment.");
+        }
+
+        streamFromGridFs(queryResponse.getGridFsId(), queryResponse.getFileName(), queryResponse.getFileSize(), response);
+        log.info("[QUERY] Response attachment streamed for responseId='{}', queryId='{}' to userId='{}'",
+                responseId, queryId, userId);
+    }
+
+    /**
+     * Stream a response's file attachment from GridFS to the HTTP response for Admin.
+     */
+    public void streamResponseFileForAdmin(String queryId, String responseId, HttpServletResponse response)
+            throws IOException {
+        Query query = findQueryOrThrow(queryId);
+
+        QueryResponse queryResponse = queryResponseRepository.findById(responseId)
+                .orElseThrow(() -> new IllegalArgumentException("Response '" + responseId + "' not found"));
+
+        if (!query.getId().equals(queryResponse.getQueryId())) {
+            throw new IllegalArgumentException("Response does not belong to the specified query.");
+        }
+
+        if (queryResponse.getGridFsId() == null || queryResponse.getGridFsId().isBlank()) {
+            throw new IllegalArgumentException("This response has no file attachment.");
+        }
+
+        streamFromGridFs(queryResponse.getGridFsId(), queryResponse.getFileName(), queryResponse.getFileSize(), response);
+        log.info("[QUERY] Admin downloaded response attachment for responseId='{}', queryId='{}'",
+                responseId, queryId);
     }
 
     /**
@@ -424,42 +554,54 @@ public class QueryService {
             throw new IllegalArgumentException("This query has no file attachment.");
         }
 
+        streamFromGridFs(query.getGridFsId(), query.getFileName(), query.getFileSize(), response);
+        log.info("[QUERY] Admin downloaded attachment for queryId='{}'", queryId);
+    }
+
+    private void streamFromGridFs(String gridFsId, String fileName, Long fileSize, HttpServletResponse response)
+            throws IOException {
         GridFSFile gridFSFile = gridFsTemplate.findOne(
                 new org.springframework.data.mongodb.core.query.Query(
-                        Criteria.where("_id").is(new ObjectId(query.getGridFsId())))
+                        Criteria.where("_id").is(new ObjectId(gridFsId)))
         );
 
         if (gridFSFile == null) {
             throw new IllegalArgumentException("Attachment file not found in storage.");
         }
 
-        response.setContentType(resolveContentType(query.getFileName()));
+        response.setContentType(resolveContentType(fileName));
         response.setHeader("Content-Disposition",
-                "attachment; filename=\"" + query.getFileName() + "\"");
+                "attachment; filename=\"" + (fileName != null ? fileName : "attachment") + "\"");
 
-        if (query.getFileSize() != null) {
-            response.setContentLengthLong(query.getFileSize());
+        if (fileSize != null) {
+            response.setContentLengthLong(fileSize);
         }
 
         try (var inputStream = gridFsOperations.getResource(gridFSFile).getInputStream()) {
             StreamUtils.copy(inputStream, response.getOutputStream());
         }
-
-        log.info("[QUERY] Admin downloaded attachment for queryId='{}'", queryId);
     }
 
     // ===================== Helpers =====================
 
     /**
      * Derive the HTTP Content-Type from a filename's extension.
+     * Supports PDF, Excel (.xlsx, .xls, .csv), Images (.jpg, .jpeg, .png), Word docs, etc.
      * Falls back to application/octet-stream for unknown types.
      */
-    private String resolveContentType(String fileName) {
+    public static String resolveContentType(String fileName) {
         if (fileName == null) return "application/octet-stream";
         String lower = fileName.toLowerCase();
         if (lower.endsWith(".pdf"))  return "application/pdf";
+        if (lower.endsWith(".xlsx")) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+        if (lower.endsWith(".xls"))  return "application/vnd.ms-excel";
+        if (lower.endsWith(".csv"))  return "text/csv";
         if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
         if (lower.endsWith(".png"))  return "image/png";
+        if (lower.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+        if (lower.endsWith(".doc"))  return "application/msword";
+        if (lower.endsWith(".txt"))  return "text/plain";
+        if (lower.endsWith(".zip"))  return "application/zip";
         return "application/octet-stream";
     }
 

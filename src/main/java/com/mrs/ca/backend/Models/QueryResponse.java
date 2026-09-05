@@ -39,6 +39,18 @@ public class QueryResponse {
     @Field("message")
     private String message;
 
+    @Field("grid_fs_id")
+    private String gridFsId;
+
+    @Field("file_name")
+    private String fileName;
+
+    @Field("file_size")
+    private Long fileSize;
+
+    @Field("file_type")
+    private String fileType;
+
     @CreatedDate
     @Field("created_at")
     private LocalDateTime createdAt;
@@ -58,6 +70,22 @@ public class QueryResponse {
         this.senderEmail = senderEmail;
         this.senderRole = senderRole;
         this.message = message;
+    }
+
+    public QueryResponse(String queryId, String clientId, String senderId, String senderName,
+                         String senderEmail, SenderRole senderRole, String message,
+                         String gridFsId, String fileName, Long fileSize, String fileType) {
+        this.queryId = queryId;
+        this.clientId = clientId;
+        this.senderId = senderId;
+        this.senderName = senderName;
+        this.senderEmail = senderEmail;
+        this.senderRole = senderRole;
+        this.message = message;
+        this.gridFsId = gridFsId;
+        this.fileName = fileName;
+        this.fileSize = fileSize;
+        this.fileType = fileType;
     }
 
     // ---- Getters and Setters ----
@@ -91,6 +119,18 @@ public class QueryResponse {
 
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
+
+    public String getGridFsId() { return gridFsId; }
+    public void setGridFsId(String gridFsId) { this.gridFsId = gridFsId; }
+
+    public String getFileName() { return fileName; }
+    public void setFileName(String fileName) { this.fileName = fileName; }
+
+    public Long getFileSize() { return fileSize; }
+    public void setFileSize(Long fileSize) { this.fileSize = fileSize; }
+
+    public String getFileType() { return fileType; }
+    public void setFileType(String fileType) { this.fileType = fileType; }
 
     @Override
     public String toString() {

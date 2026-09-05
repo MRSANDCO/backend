@@ -13,6 +13,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -30,11 +31,14 @@ public class AdminController {
 
     private static final Logger log = LoggerFactory.getLogger(AdminController.class);
 
-    /** Allowed MIME types for document upload. Extend as needed. */
+    /** Allowed MIME types for document and query upload (PDF, Excel, Images, etc.). */
     private static final Set<String> ALLOWED_MIME_TYPES = Set.of(
             "application/pdf",
             "image/jpeg",
-            "image/png"
+            "image/png",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/vnd.ms-excel",
+            "text/csv"
     );
 
     private final AdminService adminService;
@@ -272,7 +276,7 @@ public class AdminController {
     /**
      * Raise a mixed query (text + optional attachment) to a specific user/company.
      * Multipart form: userId (required), subject (required),
-     *                 message (optional), file (optional — PDF, JPEG, or PNG).
+     *                 message (optional), file (optional — PDF, Excel, JPEG, or PNG).
      */
     @PostMapping("/queries/mixed")
     public ResponseEntity<?> raiseMixedQuery(
@@ -299,7 +303,7 @@ public class AdminController {
                 log.warn("Blocked mixed-query upload with disallowed content-type '{}' for userId={}",
                         contentType, userId);
                 return ResponseEntity.badRequest()
-                        .body(Map.of("error", "Unsupported file type. Allowed: PDF, JPEG, PNG"));
+                        .body(Map.of("error", "Unsupported file type. Allowed: PDF, Excel, JPEG, PNG"));
             }
         }
 
@@ -377,10 +381,10 @@ public class AdminController {
     }
 
     /**
-     * Admin submits a response/reply to an open query.
+     * Admin submits a response/reply to an open query via JSON.
      */
-    @PostMapping("/queries/{queryId}/responses")
-    public ResponseEntity<?> submitAdminResponse(
+    @PostMapping(value = "/queries/{queryId}/responses", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<?> submitAdminJsonResponse(
             @PathVariable String queryId,
             @RequestBody QueryResponseRequest request) {
         if (request == null || request.getMessage() == null || request.getMessage().trim().isBlank()) {
@@ -391,7 +395,7 @@ public class AdminController {
         String adminUsername = (auth != null && auth.getName() != null) ? auth.getName() : "admin";
 
         try {
-            QueryResponse response = queryService.addAdminResponse(queryId, adminUsername, request.getMessage());
+            QueryResponse response = queryService.addAdminResponse(queryId, adminUsername, request.getMessage(), null);
             return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
                     "success", true,
                     "message", "Admin response submitted successfully",
@@ -399,6 +403,47 @@ public class AdminController {
             ));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Admin submits a response/reply to an open query with optional attachment (PDF, Excel, Image, etc.).
+     */
+    @PostMapping(value = "/queries/{queryId}/responses", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> submitAdminMultipartResponse(
+            @PathVariable String queryId,
+            @RequestParam(value = "message", required = false) String message,
+            @RequestParam(value = "file", required = false) MultipartFile file) {
+        boolean hasMessage = message != null && !message.trim().isBlank();
+        boolean hasFile = file != null && !file.isEmpty();
+
+        if (!hasMessage && !hasFile) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Message or attachment must be provided"));
+        }
+
+        if (file != null && !file.isEmpty()) {
+            String contentType = file.getContentType();
+            if (contentType == null || !ALLOWED_MIME_TYPES.contains(contentType)) {
+                return ResponseEntity.badRequest()
+                        .body(Map.of("error", "Unsupported file type. Allowed: PDF, Excel, JPEG, PNG"));
+            }
+        }
+
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        String adminUsername = (auth != null && auth.getName() != null) ? auth.getName() : "admin";
+
+        try {
+            QueryResponse response = queryService.addAdminResponse(queryId, adminUsername, message, file);
+            return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
+                    "success", true,
+                    "message", "Admin response submitted successfully",
+                    "response", response
+            ));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to store attachment: " + e.getMessage()));
         }
     }
 
@@ -429,7 +474,7 @@ public class AdminController {
     }
 
     /**
-     * Delete a query (removes PDF from GridFS if present).
+     * Delete a query (removes attachments from GridFS if present).
      */
     @DeleteMapping("/queries/{queryId}")
     public ResponseEntity<?> deleteQuery(@PathVariable String queryId) {
@@ -442,13 +487,27 @@ public class AdminController {
     }
 
     /**
-     * Admin downloads the PDF attachment of a query.
+     * Admin downloads the attachment of a query.
      */
     @GetMapping("/queries/{queryId}/download")
     public void downloadQueryFile(@PathVariable String queryId,
                                   HttpServletResponse response) throws IOException {
         try {
             queryService.streamQueryFileForAdmin(queryId, response);
+        } catch (IllegalArgumentException e) {
+            response.sendError(HttpServletResponse.SC_BAD_REQUEST, e.getMessage());
+        }
+    }
+
+    /**
+     * Admin downloads the attachment of a query response.
+     */
+    @GetMapping("/queries/{queryId}/responses/{responseId}/download")
+    public void downloadResponseAttachment(@PathVariable String queryId,
+                                           @PathVariable String responseId,
+                                           HttpServletResponse response) throws IOException {
+        try {
+            queryService.streamResponseFileForAdmin(queryId, responseId, response);
         } catch (IllegalArgumentException e) {
             response.sendError(HttpServletResponse.SC_BAD_REQUEST, e.getMessage());
         }

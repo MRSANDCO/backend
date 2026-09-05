@@ -155,10 +155,16 @@ public void logKeyDebug() {
             String subject = "Client Response Received – Query #" + query.getId();
             String html = buildClientResponseHtmlEmail(client, query, response);
 
-            sendViaResend(adminEmail, subject, html);
+            String attachmentFilename = response.getFileName();
+            String attachmentBase64 = null;
+            if (response.getGridFsId() != null && !response.getGridFsId().isBlank()) {
+                attachmentBase64 = getAttachmentBase64(response.getGridFsId());
+            }
 
-            log.info("[EMAIL] Admin notification sent to '{}' for client response on queryId='{}'",
-                    adminEmail, query.getId());
+            sendViaResend(adminEmail, subject, html, attachmentFilename, attachmentBase64);
+
+            log.info("[EMAIL] Admin notification sent to '{}' for client response on queryId='{}' (hasAttachment={})",
+                    adminEmail, query.getId(), attachmentFilename != null);
 
         } catch (Exception e) {
             log.error("[EMAIL] Failed to send admin notification for client response on queryId='{}': {}",
@@ -420,6 +426,28 @@ public void logKeyDebug() {
         String respondedAt  = response.getCreatedAt() != null ? response.getCreatedAt().format(DATE_FMT) : "Just now";
         String adminQueryUrl = frontendUrl.replaceAll("/$", "") + "/admin/queries/" + queryId;
 
+        String messageDisplay;
+        if (!responseText.isBlank()) {
+            messageDisplay = "<p style=\"margin:0;font-size:15px;color:#1e293b;line-height:1.6;white-space:pre-wrap;\">"
+                    + escapeHtml(responseText) + "</p>";
+        } else {
+            messageDisplay = "<p style=\"margin:0;font-size:14px;color:#64748b;font-style:italic;\">No text message provided (attachment only).</p>";
+        }
+
+        String attachmentRow = "";
+        if (response.getFileName() != null && !response.getFileName().isBlank()) {
+            attachmentRow = "<div style=\"margin-top:12px;\">"
+                    + "<div style=\"display:flex;align-items:center;gap:8px;"
+                    + "padding:10px 14px;background:#e0f2fe;border:1px solid #bae6fd;border-radius:8px;"
+                    + "font-size:12px;color:#0369a1;\">\n"
+                    + "<span style=\"font-size:16px;\">📎</span>\n"
+                    + "<span><strong>Attachment (Find below the mail):</strong> " + escapeHtml(response.getFileName()) + "</span>\n"
+                    + "</div>\n"
+                    + "</div>";
+        }
+
+        String responseBlock = messageDisplay + attachmentRow;
+
         return """
                 <!DOCTYPE html>
                 <html lang="en">
@@ -505,7 +533,7 @@ public void logKeyDebug() {
                                 Client Response
                               </p>
                               <div style="background:#eff6ff;border-left:4px solid #2563eb;padding:16px 20px;border-radius:0 8px 8px 0;">
-                                <p style="margin:0;font-size:15px;color:#1e293b;line-height:1.6;white-space:pre-wrap;">%s</p>
+                                %s
                               </div>
                             </div>
 
@@ -562,7 +590,7 @@ public void logKeyDebug() {
                 escapeHtml(querySubject),
                 escapeHtml(queryId),
                 respondedAt,
-                escapeHtml(responseText),
+                responseBlock,
                 adminQueryUrl,
                 adminQueryUrl,
                 adminQueryUrl
