@@ -40,6 +40,9 @@ public class User {
     @Field("active")
     private boolean active = true;
 
+    @Field("role")
+    private String role = "USER";
+
     @JsonIgnore
     @Field("directory_path")
     private String directoryPath;
@@ -125,6 +128,14 @@ public class User {
 
     public void setActive(boolean active) {
         this.active = active;
+    }
+
+    public String getRole() {
+        return role != null ? role : "USER";
+    }
+
+    public void setRole(String role) {
+        this.role = role;
     }
 
     public String getDirectoryPath() {

@@ -33,6 +33,11 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(403).body(Map.of("error", ex.getMessage()));
     }
 
+    @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
+    public ResponseEntity<?> handleMaxUploadSizeExceeded(org.springframework.web.multipart.MaxUploadSizeExceededException ex) {
+        return ResponseEntity.badRequest().body(Map.of("error", "Uploaded file exceeds maximum allowed size limit"));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<?> handleAll(Exception ex) {
         log.error("[ERROR] Unhandled exception: {}", ex.getMessage(), ex);

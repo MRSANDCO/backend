@@ -24,6 +24,9 @@ import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+import com.mrs.ca.backend.Models.Employee;
+import com.mrs.ca.backend.Services.EmployeeService;
+
 @WebMvcTest(AuthController.class)
 @Import({SecurityConfig.class, JwtAuthFilter.class, JwtUtil.class})
 class AuthControllerTest {
@@ -31,6 +34,7 @@ class AuthControllerTest {
     @Autowired private MockMvc mockMvc;
     @MockitoBean private AdminService adminService;
     @MockitoBean private UserService userService;
+    @MockitoBean private EmployeeService employeeService;
     @MockitoBean private MongoMappingContext mongoMappingContext;
 
     // ===================== Admin Login =====================
@@ -117,6 +121,53 @@ class AuthControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"userId":"user01"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").exists());
+    }
+
+    // ===================== Employee Login =====================
+
+    @Test
+    @DisplayName("POST /api/auth/employee/login — 200 on valid credentials")
+    void employeeLogin_success() throws Exception {
+        Employee emp = new Employee("EMP1001", "John Doe", "9876543210");
+        when(employeeService.authenticateEmployee("EMP1001", "password123")).thenReturn(Optional.of(emp));
+
+        mockMvc.perform(post("/api/auth/employee/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"employeeId":"EMP1001","password":"password123"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("Login successful"))
+                .andExpect(jsonPath("$.role").value("employee"))
+                .andExpect(jsonPath("$.employeeId").value("EMP1001"))
+                .andExpect(jsonPath("$.name").value("John Doe"))
+                .andExpect(jsonPath("$.token").exists());
+    }
+
+    @Test
+    @DisplayName("POST /api/auth/employee/login — 401 on invalid credentials")
+    void employeeLogin_failure() throws Exception {
+        when(employeeService.authenticateEmployee("EMP1001", "wrong")).thenReturn(Optional.empty());
+
+        mockMvc.perform(post("/api/auth/employee/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"employeeId":"EMP1001","password":"wrong"}
+                                """))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error").value("Invalid credentials"));
+    }
+
+    @Test
+    @DisplayName("POST /api/auth/employee/login — 400 when fields missing")
+    void employeeLogin_missingFields() throws Exception {
+        mockMvc.perform(post("/api/auth/employee/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"employeeId":"EMP1001"}
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").exists());

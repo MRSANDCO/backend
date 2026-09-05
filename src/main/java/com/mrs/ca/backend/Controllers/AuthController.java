@@ -1,8 +1,10 @@
 package com.mrs.ca.backend.Controllers;
 
 import com.mrs.ca.backend.Config.JwtUtil;
+import com.mrs.ca.backend.Models.Employee;
 import com.mrs.ca.backend.Models.User;
 import com.mrs.ca.backend.Services.AdminService;
+import com.mrs.ca.backend.Services.EmployeeService;
 import com.mrs.ca.backend.Services.UserService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -16,11 +18,14 @@ public class AuthController {
 
     private final AdminService adminService;
     private final UserService userService;
+    private final EmployeeService employeeService;
     private final JwtUtil jwtUtil;
 
-    public AuthController(AdminService adminService, UserService userService, JwtUtil jwtUtil) {
+    public AuthController(AdminService adminService, UserService userService,
+                          EmployeeService employeeService, JwtUtil jwtUtil) {
         this.adminService = adminService;
         this.userService = userService;
+        this.employeeService = employeeService;
         this.jwtUtil = jwtUtil;
     }
 
@@ -63,6 +68,34 @@ public class AuthController {
                     "role", "user",
                     "userId", user.get().getUserId(),
                     "fullName", user.get().getFullName() != null ? user.get().getFullName() : "",
+                    "token", token));
+        }
+        return ResponseEntity.status(401)
+                .body(Map.of("error", "Invalid credentials"));
+    }
+
+    @PostMapping("/employee/login")
+    public ResponseEntity<?> employeeLogin(@RequestBody Map<String, String> request) {
+        String employeeId = request.get("employeeId");
+        if (employeeId == null || employeeId.isBlank()) {
+            employeeId = request.get("userId");
+        }
+        String password = request.get("password");
+
+        if (employeeId == null || password == null) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "employeeId and password are required"));
+        }
+
+        Optional<Employee> employee = employeeService.authenticateEmployee(employeeId.trim(), password);
+        if (employee.isPresent()) {
+            String token = jwtUtil.generateToken(employee.get().getEmployeeId(), "employee");
+            return ResponseEntity.ok(Map.of(
+                    "message", "Login successful",
+                    "role", "employee",
+                    "employeeId", employee.get().getEmployeeId(),
+                    "name", employee.get().getName() != null ? employee.get().getName() : "",
+                    "profileStatus", employee.get().getProfileStatus().name(),
                     "token", token));
         }
         return ResponseEntity.status(401)
