@@ -47,6 +47,7 @@ class AdminControllerTest {
     void createUser_success() throws Exception {
         User user = new User("user01", "pass", "John", "j@m.com", "admin");
         user.setId("abc123");
+        user.setPhone("12345");
         when(adminService.createUser(eq("user01"), eq("pass"), eq("John"), eq("j@m.com"), eq("12345")))
                 .thenReturn(user);
 
@@ -57,7 +58,11 @@ class AdminControllerTest {
                                 """))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.message").value("User created successfully"))
-                .andExpect(jsonPath("$.userId").value("user01"));
+                .andExpect(jsonPath("$.userId").value("user01"))
+                .andExpect(jsonPath("$.fullName").value("John"))
+                .andExpect(jsonPath("$.email").value("j@m.com"))
+                .andExpect(jsonPath("$.phone").value("12345"))
+                .andExpect(jsonPath("$.user.userId").value("user01"));
     }
 
     @Test
@@ -85,6 +90,46 @@ class AdminControllerTest {
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("User ID 'user01' already exists"));
+    }
+
+    // ===================== PUT /api/admin/users/{userId} =====================
+
+    @Test
+    @DisplayName("PUT /api/admin/users/{userId} — 200 on success")
+    void updateUser_success() throws Exception {
+        User updated = new User("user01", "pass", "John Updated", "john_upd@m.com", "admin");
+        updated.setId("abc123");
+        updated.setPhone("99999");
+        when(adminService.updateUser(eq("user01"), eq("John Updated"), eq("john_upd@m.com"), eq("99999")))
+                .thenReturn(updated);
+
+        mockMvc.perform(put("/api/admin/users/user01")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"fullName":"John Updated","email":"john_upd@m.com","phone":"99999"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("User updated successfully"))
+                .andExpect(jsonPath("$.userId").value("user01"))
+                .andExpect(jsonPath("$.fullName").value("John Updated"))
+                .andExpect(jsonPath("$.email").value("john_upd@m.com"))
+                .andExpect(jsonPath("$.phone").value("99999"))
+                .andExpect(jsonPath("$.user.userId").value("user01"));
+    }
+
+    @Test
+    @DisplayName("PUT /api/admin/users/{userId} — 400 when user not found")
+    void updateUser_notFound() throws Exception {
+        when(adminService.updateUser(eq("ghost"), any(), any(), any()))
+                .thenThrow(new IllegalArgumentException("User 'ghost' not found"));
+
+        mockMvc.perform(put("/api/admin/users/ghost")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"fullName":"Ghost"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("User 'ghost' not found"));
     }
 
     // ===================== GET /api/admin/users =====================

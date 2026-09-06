@@ -69,9 +69,17 @@ public class AdminController {
 
             User user = adminService.createUser(userId, password, fullName, email, phone);
             return ResponseEntity.status(HttpStatus.CREATED)
-                    .body(Map.of("message", "User created successfully",
-                                 "userId", user.getUserId(),
-                                 "id", user.getId()));
+                    .body(Map.of(
+                            "message", "User created successfully",
+                            "userId", user.getUserId(),
+                            "id", user.getId() != null ? user.getId() : "",
+                            "fullName", user.getFullName() != null ? user.getFullName() : "",
+                            "email", user.getEmail() != null ? user.getEmail() : "",
+                            "phone", user.getPhone() != null ? user.getPhone() : "",
+                            "role", user.getRole(),
+                            "active", user.isActive(),
+                            "user", user
+                    ));
 
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
@@ -92,9 +100,12 @@ public class AdminController {
                 return ResponseEntity.badRequest()
                         .body(Map.of("error", "newPassword is required"));
             }
-            adminService.changePassword(userId, newPassword);
-            return ResponseEntity.ok(Map.of("message", "Password changed successfully",
-                                            "userId", userId));
+            User user = adminService.changePassword(userId, newPassword);
+            return ResponseEntity.ok(Map.of(
+                    "message", "Password changed successfully",
+                    "userId", userId,
+                    "user", user
+            ));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
@@ -108,8 +119,17 @@ public class AdminController {
                                                 request.get("fullName"), 
                                                 request.get("email"), 
                                                 request.get("phone"));
-            return ResponseEntity.ok(Map.of("message", "User updated successfully",
-                                            "userId", user.getUserId()));
+            return ResponseEntity.ok(Map.of(
+                    "message", "User updated successfully",
+                    "userId", user.getUserId(),
+                    "id", user.getId() != null ? user.getId() : "",
+                    "fullName", user.getFullName() != null ? user.getFullName() : "",
+                    "email", user.getEmail() != null ? user.getEmail() : "",
+                    "phone", user.getPhone() != null ? user.getPhone() : "",
+                    "role", user.getRole(),
+                    "active", user.isActive(),
+                    "user", user
+            ));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }

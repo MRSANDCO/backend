@@ -114,19 +114,70 @@ class AdminServiceTest {
     }
 
     @Test
-    @DisplayName("getAllUsers should delegate to repository with pagination")
+    @DisplayName("getAllUsers should delegate to repository with Sort")
     void getAllUsers() {
         User u1 = new User("u1", "p", "A", "a@m.com", "admin");
         User u2 = new User("u2", "p", "B", "b@m.com", "admin");
-        org.springframework.data.domain.Page<User> page =
-                new org.springframework.data.domain.PageImpl<>(List.of(u1, u2));
-        when(userRepository.findAll(any(org.springframework.data.domain.Pageable.class)))
-                .thenReturn(page);
+        when(userRepository.findAll(any(org.springframework.data.domain.Sort.class)))
+                .thenReturn(List.of(u1, u2));
 
         List<User> users = adminService.getAllUsers();
 
         assertThat(users).hasSize(2);
+        verify(userRepository).findAll(any(org.springframework.data.domain.Sort.class));
+    }
+
+    @Test
+    @DisplayName("getAllUsers with page and size should delegate to repository with Pageable")
+    void getAllUsers_paginated() {
+        User u1 = new User("u1", "p", "A", "a@m.com", "admin");
+        org.springframework.data.domain.Page<User> page =
+                new org.springframework.data.domain.PageImpl<>(List.of(u1));
+        when(userRepository.findAll(any(org.springframework.data.domain.Pageable.class)))
+                .thenReturn(page);
+
+        List<User> users = adminService.getAllUsers(0, 10);
+
+        assertThat(users).hasSize(1);
         verify(userRepository).findAll(any(org.springframework.data.domain.Pageable.class));
+    }
+
+    @Nested
+    @DisplayName("updateUser")
+    class UpdateUser {
+
+        @Test
+        @DisplayName("should update existing user and preserve userId and id")
+        void success() {
+            User existing = new User("user01", "pass", "Old Name", "old@mail.com", "admin");
+            existing.setId("mongoId123");
+            existing.setPhone("1111");
+
+            when(userRepository.findByUserId("user01")).thenReturn(Optional.of(existing));
+            when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            User updated = adminService.updateUser("user01", "New Name", "new@mail.com", "2222");
+
+            assertThat(updated.getId()).isEqualTo("mongoId123");
+            assertThat(updated.getUserId()).isEqualTo("user01");
+            assertThat(updated.getFullName()).isEqualTo("New Name");
+            assertThat(updated.getEmail()).isEqualTo("new@mail.com");
+            assertThat(updated.getPhone()).isEqualTo("2222");
+            assertThat(updated.getUpdatedAt()).isNotNull();
+            verify(userRepository).save(existing);
+        }
+
+        @Test
+        @DisplayName("should throw when user not found")
+        void notFound() {
+            when(userRepository.findByUserId("ghost")).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> adminService.updateUser("ghost", "Name", "e@m.com", "123"))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("not found");
+
+            verify(userRepository, never()).save(any());
+        }
     }
 
     // ===================== Document Management =====================

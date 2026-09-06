@@ -91,23 +91,27 @@ public class AdminService {
 
         User user = new User(userId, passwordEncoder.encode(password), fullName, email, adminUsername);
         user.setPhone(phone);
+        if (user.getCreatedAt() == null) {
+            user.setCreatedAt(java.time.LocalDateTime.now());
+        }
+        user.setUpdatedAt(java.time.LocalDateTime.now());
         return userRepository.save(user);
     }
 
     /**
      * Return a paginated list of users.
-     * Default: page 0, size 50, sorted by created_at descending.
+     * Default: page 0, size 50, sorted by createdAt and id descending.
      */
     public List<User> getAllUsers(int page, int size) {
         return userRepository
-                .findAll(PageRequest.of(page, Math.min(size, 100),
-                         Sort.by(Sort.Direction.DESC, "created_at")))
+                .findAll(PageRequest.of(page, Math.max(1, Math.min(size, 500)),
+                         Sort.by(Sort.Direction.DESC, "createdAt").and(Sort.by(Sort.Direction.DESC, "id"))))
                 .getContent();
     }
 
-    /** Overloaded convenience method with default pagination. */
+    /** Overloaded convenience method to return all users. */
     public List<User> getAllUsers() {
-        return getAllUsers(0, 50);
+        return userRepository.findAll(Sort.by(Sort.Direction.DESC, "createdAt").and(Sort.by(Sort.Direction.DESC, "id")));
     }
 
     /**
@@ -117,11 +121,13 @@ public class AdminService {
         User user = userRepository.findByUserId(userId)
                 .orElseThrow(() -> new IllegalArgumentException("User '" + userId + "' not found"));
         user.setPassword(passwordEncoder.encode(newPassword));
+        user.setUpdatedAt(java.time.LocalDateTime.now());
         return userRepository.save(user);
     }
 
     /**
      * Update a user's details (fullName, email, phone).
+     * Preserves primary user identity and ensures immutable identifiers.
      */
     public User updateUser(String userId, String fullName, String email, String phone) {
         User user = userRepository.findByUserId(userId)
@@ -130,6 +136,10 @@ public class AdminService {
         if (fullName != null) user.setFullName(fullName);
         if (email != null) user.setEmail(email);
         if (phone != null) user.setPhone(phone);
+        if (user.getCreatedAt() == null) {
+            user.setCreatedAt(java.time.LocalDateTime.now());
+        }
+        user.setUpdatedAt(java.time.LocalDateTime.now());
         
         log.info("[UPDATE] User '{}' details updated by admin.", userId);
         return userRepository.save(user);

@@ -161,6 +161,7 @@ class EmployeeServiceTest {
         @DisplayName("employee can submit complete profile with all fields and document uploaded")
         void submitProfile_complete_success() {
             testEmployee.setFatherName("Rajesh Sharma");
+            testEmployee.setFatherMobileNumber("9876543211");
             testEmployee.setAadhaarNumber("123456789012");
             testEmployee.setPanNumber("ABCDE1234F");
             testEmployee.setDateOfJoining(LocalDate.of(2025, 1, 15));
@@ -180,6 +181,7 @@ class EmployeeServiceTest {
         @DisplayName("employee submission fails if mandatory document is missing")
         void submitProfile_missingDoc_throwsBadRequest() {
             testEmployee.setFatherName("Rajesh Sharma");
+            testEmployee.setFatherMobileNumber("9876543211");
             testEmployee.setAadhaarNumber("123456789012");
             testEmployee.setPanNumber("ABCDE1234F");
             testEmployee.setDateOfJoining(LocalDate.of(2025, 1, 15));
