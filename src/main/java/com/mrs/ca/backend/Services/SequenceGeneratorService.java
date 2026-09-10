@@ -50,4 +50,19 @@ public class SequenceGeneratorService {
             }
         }
     }
+
+    /**
+     * Atomically generate the next Attendance ID, e.g. ATT1001, ATT1002...
+     */
+    public synchronized String generateNextAttendanceId() {
+        Query query = new Query(Criteria.where("_id").is("attendance_sequence"));
+        DatabaseSequence counter = mongoOperations.findAndModify(
+                query,
+                new Update().inc("seq", 1),
+                FindAndModifyOptions.options().returnNew(true).upsert(true),
+                DatabaseSequence.class
+        );
+        long seq = counter != null ? counter.getSeq() : 1000L;
+        return "ATT" + seq;
+    }
 }
