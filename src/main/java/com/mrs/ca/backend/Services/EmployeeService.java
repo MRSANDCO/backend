@@ -43,6 +43,8 @@ public class EmployeeService {
     private static final Pattern MOBILE_PATTERN = Pattern.compile("^[6-9]\\d{9}$");
     private static final Pattern AADHAAR_PATTERN = Pattern.compile("^\\d{12}$");
     private static final Pattern PAN_PATTERN = Pattern.compile("^[A-Z]{5}[0-9]{4}[A-Z]{1}$");
+    private static final Pattern EMAIL_PATTERN = Pattern.compile("^[A-Za-z0-9+_.-]+@(.+)$");
+    private static final Pattern PIN_PATTERN = Pattern.compile("^\\d{6}$");
     private static final Pattern DRIVE_URL_PATTERN = Pattern.compile(
             "^https://(drive|docs)\\.google\\.com/.+", Pattern.CASE_INSENSITIVE);
 
@@ -485,6 +487,13 @@ public class EmployeeService {
             }
             employee.setMobileNumber(mobile);
         }
+        if (request.getFatherMobileNumber() != null && !request.getFatherMobileNumber().trim().isBlank()) {
+            String fatherMobile = cleanMobile(request.getFatherMobileNumber());
+            if (!MOBILE_PATTERN.matcher(fatherMobile).matches()) {
+                throw new IllegalArgumentException("Invalid father's mobile number. Must be 10 digits");
+            }
+            employee.setFatherMobileNumber(fatherMobile);
+        }
         if (request.getAadhaarNumber() != null && !request.getAadhaarNumber().trim().isBlank()) {
             String aadhaar = request.getAadhaarNumber().replaceAll("\\s+", "");
             if (!AADHAAR_PATTERN.matcher(aadhaar).matches()) {
@@ -499,6 +508,35 @@ public class EmployeeService {
             }
             employee.setPanNumber(pan);
         }
+        if (request.getEmail() != null && !request.getEmail().trim().isBlank()) {
+            String email = request.getEmail().trim();
+            if (!EMAIL_PATTERN.matcher(email).matches()) {
+                throw new IllegalArgumentException("Invalid email address format");
+            }
+            employee.setEmail(email);
+        }
+        if (request.getAddressLine1() != null && !request.getAddressLine1().trim().isBlank()) {
+            employee.setAddressLine1(request.getAddressLine1().trim());
+        }
+        if (request.getAddressLine2() != null) {
+            employee.setAddressLine2(request.getAddressLine2().trim());
+        }
+        if (request.getCity() != null && !request.getCity().trim().isBlank()) {
+            employee.setCity(request.getCity().trim());
+        }
+        if (request.getState() != null && !request.getState().trim().isBlank()) {
+            employee.setState(request.getState().trim());
+        }
+        if (request.getPinCode() != null && !request.getPinCode().trim().isBlank()) {
+            String pin = request.getPinCode().trim();
+            if (!PIN_PATTERN.matcher(pin).matches()) {
+                throw new IllegalArgumentException("Invalid PIN code. Must be a 6-digit Indian PIN code");
+            }
+            employee.setPinCode(pin);
+        }
+        if (request.getReferredBy() != null) {
+            employee.setReferredBy(request.getReferredBy().trim());
+        }
         if (request.getDateOfJoining() != null) {
             employee.setDateOfJoining(request.getDateOfJoining());
         }
@@ -508,13 +546,31 @@ public class EmployeeService {
         if (request.getCurrentAddress() != null && !request.getCurrentAddress().trim().isBlank()) {
             employee.setCurrentAddress(request.getCurrentAddress().trim());
         }
-        if (request.getFatherMobileNumber() != null && !request.getFatherMobileNumber().trim().isBlank()) {
-            String fatherMobile = cleanMobile(request.getFatherMobileNumber());
-            if (!MOBILE_PATTERN.matcher(fatherMobile).matches()) {
-                throw new IllegalArgumentException("Invalid father's mobile number. Must be 10 digits");
+
+        // Auto-compose full address string if address line 1 is populated
+        if (employee.getAddressLine1() != null && !employee.getAddressLine1().isBlank()) {
+            StringBuilder composed = new StringBuilder(employee.getAddressLine1());
+            if (employee.getAddressLine2() != null && !employee.getAddressLine2().isBlank()) {
+                composed.append(", ").append(employee.getAddressLine2());
             }
-            employee.setFatherMobileNumber(fatherMobile);
+            if (employee.getCity() != null && !employee.getCity().isBlank()) {
+                composed.append(", ").append(employee.getCity());
+            }
+            if (employee.getState() != null && !employee.getState().isBlank()) {
+                composed.append(", ").append(employee.getState());
+            }
+            if (employee.getPinCode() != null && !employee.getPinCode().isBlank()) {
+                composed.append(" - ").append(employee.getPinCode());
+            }
+            String fullAddr = composed.toString();
+            if (employee.getPermanentAddress() == null || employee.getPermanentAddress().isBlank()) {
+                employee.setPermanentAddress(fullAddr);
+            }
+            if (employee.getCurrentAddress() == null || employee.getCurrentAddress().isBlank()) {
+                employee.setCurrentAddress(fullAddr);
+            }
         }
+
         if (request.getResumeGoogleDriveLink() != null && !request.getResumeGoogleDriveLink().trim().isBlank()) {
             String link = request.getResumeGoogleDriveLink().trim();
             if (!DRIVE_URL_PATTERN.matcher(link).matches()) {
@@ -534,23 +590,36 @@ public class EmployeeService {
         if (employee.getMobileNumber() == null || employee.getMobileNumber().isBlank()) {
             throw new IllegalArgumentException("Mobile Number is required for profile submission");
         }
+        if (employee.getFatherMobileNumber() == null || employee.getFatherMobileNumber().isBlank()) {
+            throw new IllegalArgumentException("Father's Mobile Number is required for profile submission");
+        }
         if (employee.getAadhaarNumber() == null || employee.getAadhaarNumber().isBlank()) {
             throw new IllegalArgumentException("Aadhaar Number is required for profile submission");
         }
         if (employee.getPanNumber() == null || employee.getPanNumber().isBlank()) {
             throw new IllegalArgumentException("PAN Number is required for profile submission");
         }
+        if (employee.getEmail() == null || employee.getEmail().isBlank()) {
+            throw new IllegalArgumentException("Email Address is required for profile submission");
+        }
+        if ((employee.getAddressLine1() == null || employee.getAddressLine1().isBlank())
+                && (employee.getPermanentAddress() == null || employee.getPermanentAddress().isBlank())) {
+            throw new IllegalArgumentException("Address Line 1 is required for profile submission");
+        }
+        if (employee.getCity() == null || employee.getCity().isBlank()) {
+            throw new IllegalArgumentException("City is required for profile submission");
+        }
+        if (employee.getState() == null || employee.getState().isBlank()) {
+            throw new IllegalArgumentException("State is required for profile submission");
+        }
+        if (employee.getPinCode() == null || employee.getPinCode().isBlank()) {
+            throw new IllegalArgumentException("PIN Code is required for profile submission");
+        }
+        if (employee.getResumeGoogleDriveLink() == null || employee.getResumeGoogleDriveLink().isBlank()) {
+            throw new IllegalArgumentException("Resume Google Drive Link is required for profile submission");
+        }
         if (employee.getDateOfJoining() == null) {
             employee.setDateOfJoining(LocalDate.now());
-        }
-        if (employee.getPermanentAddress() == null || employee.getPermanentAddress().isBlank()) {
-            throw new IllegalArgumentException("Permanent Address is required for profile submission");
-        }
-        if (employee.getCurrentAddress() == null || employee.getCurrentAddress().isBlank()) {
-            throw new IllegalArgumentException("Current Address is required for profile submission");
-        }
-        if (employee.getFatherMobileNumber() == null || employee.getFatherMobileNumber().isBlank()) {
-            throw new IllegalArgumentException("Father's Mobile Number is required for profile submission");
         }
         if (employee.getAadhaarGridFsId() == null || employee.getAadhaarGridFsId().isBlank()) {
             throw new IllegalArgumentException("Aadhaar/ID Proof PDF document must be uploaded before submitting profile");
@@ -602,6 +671,13 @@ public class EmployeeService {
         dto.setDateOfJoining(employee.getDateOfJoining());
         dto.setPermanentAddress(employee.getPermanentAddress());
         dto.setCurrentAddress(employee.getCurrentAddress());
+        dto.setEmail(employee.getEmail());
+        dto.setAddressLine1(employee.getAddressLine1());
+        dto.setAddressLine2(employee.getAddressLine2());
+        dto.setCity(employee.getCity());
+        dto.setState(employee.getState());
+        dto.setPinCode(employee.getPinCode());
+        dto.setReferredBy(employee.getReferredBy());
         dto.setFatherMobileNumber(employee.getFatherMobileNumber());
         dto.setResumeGoogleDriveLink(employee.getResumeGoogleDriveLink());
         dto.setAadhaarDocumentUrl(employee.getAadhaarDocumentUrl());

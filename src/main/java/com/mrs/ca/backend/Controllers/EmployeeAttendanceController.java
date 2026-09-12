@@ -35,7 +35,7 @@ public class EmployeeAttendanceController {
     /**
      * Employee marks check-in attendance for today.
      */
-    @PostMapping("/check-in")
+    @PostMapping({"/check-in", "/mark", "/mark-present"})
     public ResponseEntity<?> checkIn() {
         String employeeId = getAuthenticatedEmployeeId();
         try {
@@ -54,7 +54,7 @@ public class EmployeeAttendanceController {
     /**
      * Get today's attendance status for authenticated employee.
      */
-    @GetMapping("/today")
+    @GetMapping({"/today", "/status"})
     public ResponseEntity<?> getTodayAttendance() {
         String employeeId = getAuthenticatedEmployeeId();
         LocalDate today = LocalDate.now(attendanceService.getZoneId());

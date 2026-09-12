@@ -32,6 +32,27 @@ public class UpdateProfileRequest {
     @JsonAlias({"current_address", "currentAddress"})
     private String currentAddress;
 
+    @JsonAlias({"email", "emailAddress", "email_address"})
+    private String email;
+
+    @JsonAlias({"address_line1", "addressLine1", "address1", "address_1"})
+    private String addressLine1;
+
+    @JsonAlias({"address_line2", "addressLine2", "address2", "address_2"})
+    private String addressLine2;
+
+    @JsonAlias({"city"})
+    private String city;
+
+    @JsonAlias({"state"})
+    private String state;
+
+    @JsonAlias({"pin_code", "pinCode", "pincode", "zip_code", "zipCode", "zip"})
+    private String pinCode;
+
+    @JsonAlias({"referred_by", "referredBy", "reference", "referredByOptional"})
+    private String referredBy;
+
     @JsonAlias({"father_mobile_number", "fatherMobileNumber", "father_mobile"})
     private String fatherMobileNumber;
 
@@ -117,6 +138,62 @@ public class UpdateProfileRequest {
 
     public void setCurrentAddress(String currentAddress) {
         this.currentAddress = currentAddress;
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public void setEmail(String email) {
+        this.email = email;
+    }
+
+    public String getAddressLine1() {
+        return addressLine1;
+    }
+
+    public void setAddressLine1(String addressLine1) {
+        this.addressLine1 = addressLine1;
+    }
+
+    public String getAddressLine2() {
+        return addressLine2;
+    }
+
+    public void setAddressLine2(String addressLine2) {
+        this.addressLine2 = addressLine2;
+    }
+
+    public String getCity() {
+        return city;
+    }
+
+    public void setCity(String city) {
+        this.city = city;
+    }
+
+    public String getState() {
+        return state;
+    }
+
+    public void setState(String state) {
+        this.state = state;
+    }
+
+    public String getPinCode() {
+        return pinCode;
+    }
+
+    public void setPinCode(String pinCode) {
+        this.pinCode = pinCode;
+    }
+
+    public String getReferredBy() {
+        return referredBy;
+    }
+
+    public void setReferredBy(String referredBy) {
+        this.referredBy = referredBy;
     }
 
     public String getFatherMobileNumber() {

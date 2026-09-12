@@ -164,9 +164,16 @@ class EmployeeServiceTest {
             testEmployee.setFatherMobileNumber("9876543211");
             testEmployee.setAadhaarNumber("123456789012");
             testEmployee.setPanNumber("ABCDE1234F");
+            testEmployee.setEmail("alice@example.com");
+            testEmployee.setAddressLine1("123 Main St");
+            testEmployee.setCity("Mumbai");
+            testEmployee.setState("Maharashtra");
+            testEmployee.setPinCode("400001");
+            testEmployee.setResumeGoogleDriveLink("https://drive.google.com/file/d/123456");
+            testEmployee.setReferredBy("John Doe");
             testEmployee.setDateOfJoining(LocalDate.of(2025, 1, 15));
-            testEmployee.setPermanentAddress("123 Main St");
-            testEmployee.setCurrentAddress("456 Park Ave");
+            testEmployee.setPermanentAddress("123 Main St, Mumbai, Maharashtra - 400001");
+            testEmployee.setCurrentAddress("123 Main St, Mumbai, Maharashtra - 400001");
             testEmployee.setAadhaarGridFsId("gridfs-id-123");
 
             when(employeeRepository.findByEmployeeId("EMP1001")).thenReturn(Optional.of(testEmployee));
@@ -177,6 +184,8 @@ class EmployeeServiceTest {
             assertThat(response.getProfileStatus()).isEqualTo(ProfileStatus.SUBMITTED);
             assertThat(response.getFormCompleted()).isTrue();
             assertThat(response.isFormCompleted()).isTrue();
+            assertThat(response.getEmail()).isEqualTo("alice@example.com");
+            assertThat(response.getReferredBy()).isEqualTo("John Doe");
         }
 
         @Test
@@ -194,6 +203,12 @@ class EmployeeServiceTest {
             req.setFatherMobileNumber("9876543211");
             req.setAadhaarNumber("123456789012");
             req.setPanNumber("ABCDE1234F");
+            req.setEmail("alice@example.com");
+            req.setAddressLine1("123 Main St");
+            req.setCity("Mumbai");
+            req.setState("Maharashtra");
+            req.setPinCode("400001");
+            req.setResumeGoogleDriveLink("https://drive.google.com/file/d/123456");
             req.setDateOfJoining(LocalDate.of(2025, 1, 15));
             req.setPermanentAddress("123 Main St");
             req.setCurrentAddress("456 Park Ave");
@@ -203,6 +218,7 @@ class EmployeeServiceTest {
             assertThat(response.getProfileStatus()).isEqualTo(ProfileStatus.SUBMITTED);
             assertThat(response.getFormCompleted()).isTrue();
             assertThat(response.getName()).isEqualTo("Alice Updated");
+            assertThat(response.getEmail()).isEqualTo("alice@example.com");
             verify(userRepository).save(argThat(user -> "Alice Updated".equals(user.getFullName())));
         }
 
@@ -213,6 +229,12 @@ class EmployeeServiceTest {
             testEmployee.setFatherMobileNumber("9876543211");
             testEmployee.setAadhaarNumber("123456789012");
             testEmployee.setPanNumber("ABCDE1234F");
+            testEmployee.setEmail("alice@example.com");
+            testEmployee.setAddressLine1("123 Main St");
+            testEmployee.setCity("Mumbai");
+            testEmployee.setState("Maharashtra");
+            testEmployee.setPinCode("400001");
+            testEmployee.setResumeGoogleDriveLink("https://drive.google.com/file/d/123456");
             testEmployee.setDateOfJoining(LocalDate.of(2025, 1, 15));
             testEmployee.setPermanentAddress("123 Main St");
             testEmployee.setCurrentAddress("456 Park Ave");

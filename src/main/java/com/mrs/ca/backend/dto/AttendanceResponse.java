@@ -18,6 +18,8 @@ public class AttendanceResponse {
     private String formattedCheckInTime;
     private LocalTime checkOutTime;
     private String formattedCheckOutTime;
+    private java.time.LocalDateTime markedAt;
+    private String formattedMarkedAt;
     private AttendanceStatus status;
     private String remarks;
 
@@ -39,9 +41,17 @@ public class AttendanceResponse {
         }
         resp.setCheckInTime(attendance.getCheckInTime());
         if (attendance.getCheckInTime() != null) {
-            resp.setFormattedCheckInTime(attendance.getCheckInTime().format(TIME_FORMATTER));
+            String timeStr = attendance.getCheckInTime().format(TIME_FORMATTER);
+            resp.setFormattedCheckInTime(timeStr);
+            resp.setFormattedMarkedAt(timeStr);
         } else {
             resp.setFormattedCheckInTime("--");
+            resp.setFormattedMarkedAt("--");
+        }
+        if (attendance.getCreatedAt() != null) {
+            resp.setMarkedAt(attendance.getCreatedAt());
+        } else if (attendance.getAttendanceDate() != null && attendance.getCheckInTime() != null) {
+            resp.setMarkedAt(java.time.LocalDateTime.of(attendance.getAttendanceDate(), attendance.getCheckInTime()));
         }
         resp.setCheckOutTime(attendance.getCheckOutTime());
         if (attendance.getCheckOutTime() != null) {
@@ -126,6 +136,22 @@ public class AttendanceResponse {
 
     public void setFormattedCheckOutTime(String formattedCheckOutTime) {
         this.formattedCheckOutTime = formattedCheckOutTime;
+    }
+
+    public java.time.LocalDateTime getMarkedAt() {
+        return markedAt;
+    }
+
+    public void setMarkedAt(java.time.LocalDateTime markedAt) {
+        this.markedAt = markedAt;
+    }
+
+    public String getFormattedMarkedAt() {
+        return formattedMarkedAt;
+    }
+
+    public void setFormattedMarkedAt(String formattedMarkedAt) {
+        this.formattedMarkedAt = formattedMarkedAt;
     }
 
     public AttendanceStatus getStatus() {
