@@ -49,21 +49,26 @@ public class EmployeeController {
 
     /**
      * Employee updates their profile (only allowed before submission).
+     * Accepts PUT, POST, or PATCH requests.
      * Returns 403 Forbidden if profileStatus == SUBMITTED.
      */
-    @PutMapping
+    @RequestMapping(method = {RequestMethod.PUT, RequestMethod.POST, RequestMethod.PATCH})
     public ResponseEntity<?> updateMyProfile(@RequestBody UpdateProfileRequest request) {
         String employeeId = getAuthenticatedEmployeeId();
         try {
             EmployeeProfileResponse updated = employeeService.updateProfileByEmployee(employeeId, request);
             return ResponseEntity.ok(Map.of(
                     "message", "Profile updated successfully",
+                    "success", true,
+                    "profileStatus", updated.getProfileStatus().name(),
+                    "formCompleted", false,
+                    "isFormCompleted", false,
                     "profile", updated
             ));
         } catch (SecurityException e) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage(), "success", false));
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage(), "success", false));
         }
     }
 
@@ -71,56 +76,55 @@ public class EmployeeController {
      * Employee submits complete profile with final form payload. Locks profile from further edits.
      * Document must be uploaded prior to final submission via POST /api/employee/profile/document.
      */
-    @PostMapping(value = "/submit", consumes = {MediaType.APPLICATION_JSON_VALUE, MediaType.APPLICATION_FORM_URLENCODED_VALUE, MediaType.ALL_VALUE})
+    @RequestMapping(value = "/submit", method = {RequestMethod.POST, RequestMethod.PUT}, consumes = {MediaType.APPLICATION_JSON_VALUE, MediaType.APPLICATION_FORM_URLENCODED_VALUE, MediaType.ALL_VALUE})
     public ResponseEntity<?> submitMyProfile(@RequestBody(required = false) UpdateProfileRequest requestBody) {
         String employeeId = getAuthenticatedEmployeeId();
         try {
             EmployeeProfileResponse submitted = employeeService.submitProfile(employeeId, requestBody);
             return ResponseEntity.ok(Map.of(
                     "message", "Profile submitted successfully and locked for review",
+                    "success", true,
                     "profileStatus", submitted.getProfileStatus().name(),
                     "formCompleted", true,
                     "isFormCompleted", true,
                     "profile", submitted
             ));
         } catch (SecurityException e) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage(), "success", false));
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage(), "success", false));
         }
     }
 
     /**
      * Employee uploads Aadhaar / ID proof PDF (only allowed before submission).
-     * Optionally saves draft profile fields sent alongside the file without completing submission.
      * Returns 403 Forbidden if profileStatus == SUBMITTED.
      */
-    @PostMapping(value = "/document", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<?> uploadDocument(
-            @RequestParam("file") MultipartFile file,
-            @RequestPart(value = "request", required = false) UpdateProfileRequest draftRequest) {
+    @PostMapping(value = {"/document", "/upload", "/upload-document"}, consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> uploadDocument(@RequestParam("file") MultipartFile file) {
         String employeeId = getAuthenticatedEmployeeId();
         try {
-            EmployeeProfileResponse profile = employeeService.uploadDocumentByEmployee(employeeId, file, draftRequest);
-            return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
-                    "message", "Document uploaded successfully",
-                    "fileName", profile.getAadhaarFileName() != null ? profile.getAadhaarFileName() : "",
-                    "aadhaarFileName", profile.getAadhaarFileName() != null ? profile.getAadhaarFileName() : "",
-                    "aadhaarDocumentUrl", profile.getAadhaarDocumentUrl() != null ? profile.getAadhaarDocumentUrl() : "",
-                    "aadhaarFileSize", profile.getAadhaarFileSize() != null ? profile.getAadhaarFileSize() : 0L,
-                    "documentStatus", profile.getDocumentStatus().name(),
-                    "profileStatus", profile.getProfileStatus().name(),
-                    "formCompleted", false,
-                    "isFormCompleted", false,
-                    "profile", profile
+            EmployeeProfileResponse profile = employeeService.uploadDocumentByEmployee(employeeId, file);
+            return ResponseEntity.status(HttpStatus.CREATED).body(Map.ofEntries(
+                    Map.entry("message", "Document uploaded successfully"),
+                    Map.entry("success", true),
+                    Map.entry("fileName", profile.getAadhaarFileName() != null ? profile.getAadhaarFileName() : ""),
+                    Map.entry("aadhaarFileName", profile.getAadhaarFileName() != null ? profile.getAadhaarFileName() : ""),
+                    Map.entry("aadhaarDocumentUrl", profile.getAadhaarDocumentUrl() != null ? profile.getAadhaarDocumentUrl() : ""),
+                    Map.entry("aadhaarFileSize", profile.getAadhaarFileSize() != null ? profile.getAadhaarFileSize() : 0L),
+                    Map.entry("documentStatus", profile.getDocumentStatus().name()),
+                    Map.entry("profileStatus", profile.getProfileStatus().name()),
+                    Map.entry("formCompleted", false),
+                    Map.entry("isFormCompleted", false),
+                    Map.entry("profile", profile)
             ));
         } catch (SecurityException e) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage(), "success", false));
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage(), "success", false));
         } catch (IOException e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("error", "Failed to store document: " + e.getMessage()));
+                    .body(Map.of("error", "Failed to store document: " + e.getMessage(), "success", false));
         }
     }
 
