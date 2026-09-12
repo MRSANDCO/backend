@@ -213,6 +213,30 @@ public class EmployeeController {
         }
     }
 
+    /**
+     * Employee deletes their uploaded Aadhaar / ID proof PDF before profile submission.
+     * Deletes document binary from storage while preserving all entered profile form fields.
+     */
+    @DeleteMapping(value = {"/document", "/document/{documentId}", "/upload-document"})
+    public ResponseEntity<?> deleteDocument() {
+        String employeeId = getAuthenticatedEmployeeId();
+        try {
+            EmployeeProfileResponse profile = employeeService.deleteDocumentByEmployee(employeeId);
+            return ResponseEntity.ok(Map.of(
+                    "message", "Document deleted successfully",
+                    "success", true,
+                    "profileStatus", profile.getProfileStatus().name(),
+                    "formCompleted", false,
+                    "isFormCompleted", false,
+                    "profile", profile
+            ));
+        } catch (SecurityException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage(), "success", false));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage(), "success", false));
+        }
+    }
+
     private UpdateProfileRequest buildUpdateRequestFromParams(Map<String, String> params, String jsonPart) {
         UpdateProfileRequest req = new UpdateProfileRequest();
         if (jsonPart != null && !jsonPart.trim().isBlank()) {

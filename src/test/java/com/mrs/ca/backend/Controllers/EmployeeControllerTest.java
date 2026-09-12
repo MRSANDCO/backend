@@ -96,8 +96,9 @@ class EmployeeControllerTest {
         res.setProfileStatus(ProfileStatus.SUBMITTED);
         res.setFormCompleted(true);
 
-        when(employeeService.submitProfile(eq("EMP1001"), any(UpdateProfileRequest.class))).thenReturn(res);
-        when(employeeService.submitProfile(eq("EMP1001"), any(UpdateProfileRequest.class), any())).thenReturn(res);
+        when(employeeService.submitProfile(anyString())).thenReturn(res);
+        when(employeeService.submitProfile(anyString(), any())).thenReturn(res);
+        when(employeeService.submitProfile(anyString(), any(), any())).thenReturn(res);
 
         mockMvc.perform(post("/api/employee/profile/submit"))
                 .andExpect(status().isOk())
@@ -196,6 +197,26 @@ class EmployeeControllerTest {
         mockMvc.perform(multipart("/api/employee/profile/document").file(file))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error").value("Profile has already been submitted. Documents cannot be modified"));
+    }
+
+    @Test
+    @WithMockUser(username = "EMP1001", roles = "EMPLOYEE")
+    @DisplayName("DELETE /api/employee/profile/document — 200 OK on document deletion")
+    void deleteDocument_success() throws Exception {
+        EmployeeProfileResponse res = new EmployeeProfileResponse();
+        res.setEmployeeId("EMP1001");
+        res.setAadhaarFileName(null);
+        res.setDocumentStatus(DocumentVerificationStatus.PENDING);
+        res.setProfileStatus(ProfileStatus.INCOMPLETE);
+
+        when(employeeService.deleteDocumentByEmployee("EMP1001")).thenReturn(res);
+
+        mockMvc.perform(delete("/api/employee/profile/document"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("Document deleted successfully"))
+                .andExpect(jsonPath("$.formCompleted").value(false))
+                .andExpect(jsonPath("$.isFormCompleted").value(false));
     }
 
     @Test

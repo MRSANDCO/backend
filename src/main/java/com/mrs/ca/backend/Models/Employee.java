@@ -95,6 +95,14 @@ public class Employee {
     @Field("document_rejection_reason")
     private String documentRejectionReason;
 
+    /**
+     * Employment lifecycle status. Defaults to ACTIVE for all new employees.
+     * Existing documents in MongoDB that lack this field return null from the
+     * repository; the service layer treats null as ACTIVE — no migration required.
+     */
+    @Field("employment_status")
+    private EmploymentStatus employmentStatus = EmploymentStatus.ACTIVE;
+
     @CreatedDate
     @Field("created_at")
     private LocalDateTime createdAt;
@@ -113,6 +121,7 @@ public class Employee {
         this.profileStatus = ProfileStatus.INCOMPLETE;
         this.formCompleted = false;
         this.documentStatus = DocumentVerificationStatus.PENDING;
+        this.employmentStatus = EmploymentStatus.ACTIVE;
     }
 
     // --- Getters and Setters ---
@@ -357,5 +366,13 @@ public class Employee {
 
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public EmploymentStatus getEmploymentStatus() {
+        return employmentStatus;
+    }
+
+    public void setEmploymentStatus(EmploymentStatus employmentStatus) {
+        this.employmentStatus = employmentStatus;
     }
 }

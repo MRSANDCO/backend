@@ -3,6 +3,7 @@ package com.mrs.ca.backend.Services;
 import com.mongodb.client.gridfs.model.GridFSFile;
 import com.mrs.ca.backend.Models.DocumentVerificationStatus;
 import com.mrs.ca.backend.Models.Employee;
+import com.mrs.ca.backend.Models.EmploymentStatus;
 import com.mrs.ca.backend.Models.ProfileStatus;
 import com.mrs.ca.backend.Models.User;
 import com.mrs.ca.backend.Repositories.EmployeeRepository;
@@ -118,6 +119,7 @@ public class EmployeeService {
         Employee employee = new Employee(employeeId, name, mobile);
         employee.setProfileStatus(ProfileStatus.INCOMPLETE);
         employee.setDocumentStatus(DocumentVerificationStatus.PENDING);
+        employee.setEmploymentStatus(EmploymentStatus.ACTIVE);
         employeeRepository.save(employee);
 
         log.info("[EMPLOYEE] Created employee: employeeId='{}', name='{}'", employeeId, name);
@@ -133,16 +135,47 @@ public class EmployeeService {
     }
 
     /**
-     * Admin lists/searches employees with pagination.
+     * Admin lists/searches employees with optional employment-status filter and pagination.
+     *
+     * @param search           optional free-text search (name / employeeId / mobile)
+     * @param employmentStatus optional filter: "ACTIVE", "EX_EMPLOYEE", or null for all
+     * @param page             zero-based page index
+     * @param size             page size (max 100)
      */
-    public Page<EmployeeProfileResponse> getAllEmployees(String search, int page, int size) {
+    public Page<EmployeeProfileResponse> getAllEmployees(String search, String employmentStatus, int page, int size) {
         Pageable pageable = PageRequest.of(Math.max(0, page), Math.min(Math.max(1, size), 100),
                 Sort.by(Sort.Direction.DESC, "created_at"));
 
+        // Resolve the optional status filter
+        EmploymentStatus statusFilter = null;
+        if (employmentStatus != null && !employmentStatus.trim().isBlank()) {
+            try {
+                statusFilter = EmploymentStatus.valueOf(employmentStatus.trim().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException(
+                        "Invalid employmentStatus value '" + employmentStatus + "'. Allowed: ACTIVE, EX_EMPLOYEE");
+            }
+        }
+
+        boolean hasSearch = search != null && !search.trim().isBlank();
         Page<Employee> employeePage;
-        if (search != null && !search.trim().isBlank()) {
+
+        if (hasSearch && statusFilter != null) {
+            // Search text + status filter
+            employeePage = employeeRepository.searchEmployeesByStatus(search.trim(), statusFilter, pageable);
+        } else if (hasSearch) {
+            // Search text only — return all statuses
             employeePage = employeeRepository.searchEmployees(search.trim(), pageable);
+        } else if (statusFilter != null) {
+            // Status filter only (no text search)
+            // For ACTIVE: also include legacy docs where employment_status is null
+            if (statusFilter == EmploymentStatus.ACTIVE) {
+                employeePage = employeeRepository.searchEmployeesByStatusOrNull("", EmploymentStatus.ACTIVE, pageable);
+            } else {
+                employeePage = employeeRepository.findByEmploymentStatus(statusFilter, pageable);
+            }
         } else {
+            // No filter — return all employees
             employeePage = employeeRepository.findAll(pageable);
         }
 
@@ -151,6 +184,13 @@ public class EmployeeService {
                 .toList();
 
         return new PageImpl<>(dtoList, pageable, employeePage.getTotalElements());
+    }
+
+    /**
+     * Overload for backward compatibility with callers that do not pass a status filter.
+     */
+    public Page<EmployeeProfileResponse> getAllEmployees(String search, int page, int size) {
+        return getAllEmployees(search, null, page, size);
     }
 
     /**
@@ -244,6 +284,43 @@ public class EmployeeService {
         Employee saved = employeeRepository.save(employee);
         log.info("[ADMIN] Rejected document for employeeId='{}'", employeeId);
         return toProfileResponse(saved);
+    }
+
+    /**
+     * Admin-only: updates the employment lifecycle status of an employee.
+     * <p>
+     * Only {@code employmentStatus} is modified — all personal details, salary info,
+     * documents, and profile data remain completely intact. The employee record is
+     * never deleted.
+     * </p>
+     *
+     * @param employeeId the employee's unique business ID
+     * @param newStatus  the target {@link EmploymentStatus} (ACTIVE or EX_EMPLOYEE)
+     * @return the updated employee profile
+     * @throws IllegalArgumentException if the employee is not found or status is null
+     */
+    public EmployeeProfileResponse updateEmploymentStatus(String employeeId, EmploymentStatus newStatus) {
+        if (newStatus == null) {
+            throw new IllegalArgumentException("employmentStatus is required. Allowed values: ACTIVE, EX_EMPLOYEE");
+        }
+        Employee employee = findEmployeeOrThrow(employeeId);
+        employee.setEmploymentStatus(newStatus);
+        Employee saved = employeeRepository.save(employee);
+        log.info("[ADMIN] Employment status changed to '{}' for employeeId='{}'", newStatus, employeeId);
+        return toProfileResponse(saved);
+    }
+
+    /**
+     * Returns the count of employees for a given employment status.
+     * Null-safe: legacy records without an employment_status field are counted as ACTIVE.
+     *
+     * @param status the employment status to count
+     * @return total count
+     */
+    public long countByEmploymentStatus(EmploymentStatus status) {
+        return employeeRepository.countByEmploymentStatus(status);
+    // Note: legacy null-status docs are not counted here; for a fully inclusive
+    // ACTIVE count use countByEmploymentStatus(ACTIVE) + countByNullStatus if needed.
     }
 
     // =========================================================================
@@ -410,6 +487,39 @@ public class EmployeeService {
 
     public EmployeeProfileResponse uploadDocumentByEmployee(String employeeId, MultipartFile file) throws IOException {
         return uploadDocumentByEmployee(employeeId, file, null);
+    }
+
+    /**
+     * Employee deletes uploaded Aadhaar / ID proof PDF before profile submission.
+     * Deletes file from GridFS and resets document fields while preserving all other employee profile data.
+     */
+    public EmployeeProfileResponse deleteDocumentByEmployee(String employeeId) {
+        Employee employee = findEmployeeOrThrow(employeeId);
+
+        if (employee.getProfileStatus() == ProfileStatus.SUBMITTED || Boolean.TRUE.equals(employee.getFormCompleted())) {
+            log.warn("[ACCESS DENIED] Employee '{}' attempted to delete document after profile submission", employeeId);
+            throw new SecurityException("Profile has already been submitted. Documents cannot be modified or deleted. Contact Admin.");
+        }
+
+        if (employee.getAadhaarGridFsId() != null && !employee.getAadhaarGridFsId().isBlank()) {
+            try {
+                gridFsTemplate.delete(new Query(Criteria.where("_id").is(new ObjectId(employee.getAadhaarGridFsId()))));
+                log.info("[EMPLOYEE] Deleted GridFS document for employeeId='{}'", employeeId);
+            } catch (Exception e) {
+                log.warn("[EMPLOYEE] Could not delete GridFS document for employeeId='{}': {}", employeeId, e.getMessage());
+            }
+        }
+
+        employee.setAadhaarGridFsId(null);
+        employee.setAadhaarFileName(null);
+        employee.setAadhaarFileSize(null);
+        employee.setAadhaarDocumentUrl(null);
+        employee.setDocumentStatus(DocumentVerificationStatus.PENDING);
+        employee.setDocumentRejectionReason(null);
+
+        Employee saved = employeeRepository.save(employee);
+        log.info("[EMPLOYEE] Cleared document reference for employeeId='{}'", employeeId);
+        return toProfileResponse(saved);
     }
 
     /**
@@ -726,6 +836,13 @@ public class EmployeeService {
         dto.setDocumentRejectionReason(employee.getDocumentRejectionReason());
         dto.setCreatedAt(employee.getCreatedAt());
         dto.setUpdatedAt(employee.getUpdatedAt());
+
+        // Employment status: default null (legacy records) to ACTIVE
+        dto.setEmploymentStatus(
+                employee.getEmploymentStatus() != null
+                        ? employee.getEmploymentStatus()
+                        : EmploymentStatus.ACTIVE
+        );
 
         userRepository.findByUserId(employee.getEmployeeId()).ifPresent(user -> dto.setActive(user.isActive()));
 

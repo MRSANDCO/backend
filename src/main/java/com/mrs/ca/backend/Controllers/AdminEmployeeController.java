@@ -2,6 +2,7 @@ package com.mrs.ca.backend.Controllers;
 
 import com.mrs.ca.backend.Services.EmployeeService;
 import com.mrs.ca.backend.dto.*;
+import com.mrs.ca.backend.Models.EmploymentStatus;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
@@ -40,15 +41,28 @@ public class AdminEmployeeController {
     }
 
     /**
-     * List and search employees.
+     * List and search employees with optional employment-status filter.
+     * <p>
+     * Query params:
+     * <ul>
+     *   <li>{@code search} — free-text search (name / employeeId / mobile)</li>
+     *   <li>{@code employmentStatus} — {@code ACTIVE} or {@code EX_EMPLOYEE} (omit for all)</li>
+     *   <li>{@code page} / {@code size} — pagination</li>
+     * </ul>
      */
     @GetMapping
-    public ResponseEntity<Page<EmployeeProfileResponse>> getAllEmployees(
+    public ResponseEntity<?> getAllEmployees(
             @RequestParam(value = "search", required = false) String search,
+            @RequestParam(value = "employmentStatus", required = false) String employmentStatus,
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "20") int size) {
-        Page<EmployeeProfileResponse> employees = employeeService.getAllEmployees(search, page, size);
-        return ResponseEntity.ok(employees);
+        try {
+            Page<EmployeeProfileResponse> employees =
+                    employeeService.getAllEmployees(search, employmentStatus, page, size);
+            return ResponseEntity.ok(employees);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
     }
 
     /**
@@ -156,8 +170,50 @@ public class AdminEmployeeController {
     }
 
     /**
+     * Update employee employment status (lifecycle change: ACTIVE ↔ EX_EMPLOYEE).
+     * <p>
+     * This is NOT a delete operation. The employee's complete data remains intact
+     * in the database. Only the {@code employmentStatus} field is modified.
+     * </p>
+     * <p>
+     * Request body: {@code { "employmentStatus": "EX_EMPLOYEE" }}
+     * </p>
+     * <p>
+     * Requires ADMIN role (enforced by Spring Security at {@code /api/admin/**}).
+     * </p>
+     */
+    @PatchMapping("/{employeeId}/employment-status")
+    public ResponseEntity<?> updateEmploymentStatus(
+            @PathVariable String employeeId,
+            @RequestBody UpdateEmploymentStatusRequest request) {
+
+        if (request == null || request.getEmploymentStatus() == null) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "'employmentStatus' is required. Allowed values: ACTIVE, EX_EMPLOYEE"
+            ));
+        }
+
+        try {
+            EmployeeProfileResponse updated =
+                    employeeService.updateEmploymentStatus(employeeId, request.getEmploymentStatus());
+            return ResponseEntity.ok(Map.of(
+                    "message", "Employment status updated successfully",
+                    "employeeId", employeeId,
+                    "employmentStatus", updated.getEmploymentStatus().name(),
+                    "employee", updated
+            ));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
      * Permanently delete an employee — removes profile, user account, and GridFS Aadhaar document.
      * ADMIN only — enforced at security config level (no EMPLOYEE role can reach this endpoint).
+     * <p>
+     * NOTE: Prefer using {@code PATCH /{employeeId}/employment-status} with {@code EX_EMPLOYEE}
+     * to preserve historical data when an employee leaves the company.
+     * </p>
      */
     @DeleteMapping("/{employeeId}")
     public ResponseEntity<?> deleteEmployee(@PathVariable String employeeId) {

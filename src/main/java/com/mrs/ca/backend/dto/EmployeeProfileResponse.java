@@ -1,6 +1,7 @@
 package com.mrs.ca.backend.dto;
 
 import com.mrs.ca.backend.Models.DocumentVerificationStatus;
+import com.mrs.ca.backend.Models.EmploymentStatus;
 import com.mrs.ca.backend.Models.ProfileStatus;
 
 import java.time.LocalDate;
@@ -35,6 +36,8 @@ public class EmployeeProfileResponse {
     private DocumentVerificationStatus documentStatus;
     private String documentRejectionReason;
     private Boolean active;
+    /** Employment lifecycle status: ACTIVE or EX_EMPLOYEE. */
+    private EmploymentStatus employmentStatus;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -275,5 +278,13 @@ public class EmployeeProfileResponse {
 
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public EmploymentStatus getEmploymentStatus() {
+        return employmentStatus;
+    }
+
+    public void setEmploymentStatus(EmploymentStatus employmentStatus) {
+        this.employmentStatus = employmentStatus;
     }
 }
