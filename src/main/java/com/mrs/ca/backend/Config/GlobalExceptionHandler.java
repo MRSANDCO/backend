@@ -38,9 +38,20 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(Map.of("error", "Uploaded file exceeds maximum allowed size limit"));
     }
 
+    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
+    public ResponseEntity<?> handleHttpMessageNotReadable(org.springframework.http.converter.HttpMessageNotReadableException ex) {
+        String detail = ex.getMostSpecificCause() != null ? ex.getMostSpecificCause().getMessage() : ex.getMessage();
+        return ResponseEntity.badRequest().body(Map.of("error", "Invalid request payload format: " + detail));
+    }
+
+    @ExceptionHandler(org.springframework.web.HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<?> handleMediaTypeNotSupported(org.springframework.web.HttpMediaTypeNotSupportedException ex) {
+        return ResponseEntity.badRequest().body(Map.of("error", "Unsupported content type: " + ex.getContentType()));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<?> handleAll(Exception ex) {
         log.error("[ERROR] Unhandled exception: {}", ex.getMessage(), ex);
-        return ResponseEntity.status(500).body(Map.of("error", "Internal server error"));
+        return ResponseEntity.status(500).body(Map.of("error", ex.getMessage() != null ? ex.getMessage() : "Internal server error"));
     }
 }

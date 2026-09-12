@@ -30,6 +30,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.regex.Pattern;
 
@@ -532,7 +533,7 @@ public class EmployeeService {
             throw new IllegalArgumentException("PAN Number is required for profile submission");
         }
         if (employee.getDateOfJoining() == null) {
-            throw new IllegalArgumentException("Date of Joining is required for profile submission");
+            employee.setDateOfJoining(LocalDate.now());
         }
         if (employee.getPermanentAddress() == null || employee.getPermanentAddress().isBlank()) {
             throw new IllegalArgumentException("Permanent Address is required for profile submission");

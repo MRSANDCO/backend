@@ -68,13 +68,18 @@ public class EmployeeController {
     }
 
     /**
-     * Employee submits complete profile with optional payload. Locks profile from further edits.
+     * Employee submits complete profile with optional payload and optional document file. Locks profile from further edits.
      */
-    @PostMapping("/submit")
-    public ResponseEntity<?> submitMyProfile(@RequestBody(required = false) UpdateProfileRequest request) {
+    @PostMapping(value = "/submit", consumes = {MediaType.APPLICATION_JSON_VALUE, MediaType.MULTIPART_FORM_DATA_VALUE, MediaType.APPLICATION_FORM_URLENCODED_VALUE, MediaType.ALL_VALUE})
+    public ResponseEntity<?> submitMyProfile(
+            @RequestBody(required = false) UpdateProfileRequest requestBody,
+            @RequestParam(value = "file", required = false) MultipartFile file) {
         String employeeId = getAuthenticatedEmployeeId();
         try {
-            EmployeeProfileResponse submitted = employeeService.submitProfile(employeeId, request);
+            if (file != null && !file.isEmpty()) {
+                employeeService.uploadDocumentByEmployee(employeeId, file);
+            }
+            EmployeeProfileResponse submitted = employeeService.submitProfile(employeeId, requestBody);
             return ResponseEntity.ok(Map.of(
                     "message", "Profile submitted successfully and locked for review",
                     "profileStatus", submitted.getProfileStatus().name(),
@@ -86,6 +91,9 @@ public class EmployeeController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (IOException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to store document during submission: " + e.getMessage()));
         }
     }
 

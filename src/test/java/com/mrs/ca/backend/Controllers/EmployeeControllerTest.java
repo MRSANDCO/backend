@@ -106,11 +106,12 @@ class EmployeeControllerTest {
 
     @Test
     @WithMockUser(username = "EMP1001", roles = "EMPLOYEE")
-    @DisplayName("POST /api/employee/profile/submit — 200 updates profile payload and locks profile")
-    void submitProfile_withBody_success() throws Exception {
+    @DisplayName("POST /api/employee/profile/submit — 200 handles snake_case fields correctly")
+    void submitProfile_withSnakeCaseBody_success() throws Exception {
         EmployeeProfileResponse res = new EmployeeProfileResponse();
         res.setEmployeeId("EMP1001");
-        res.setName("John Updated");
+        res.setFatherName("Rajesh Sharma");
+        res.setAadhaarNumber("123456789012");
         res.setProfileStatus(ProfileStatus.SUBMITTED);
         res.setFormCompleted(true);
 
@@ -119,12 +120,16 @@ class EmployeeControllerTest {
         mockMvc.perform(post("/api/employee/profile/submit")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name":"John Updated"}
+                                {
+                                  "father_name": "Rajesh Sharma",
+                                  "aadhaar_number": "123456789012",
+                                  "date_of_joining": "2025-01-15"
+                                }
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.profileStatus").value("SUBMITTED"))
                 .andExpect(jsonPath("$.formCompleted").value(true))
-                .andExpect(jsonPath("$.profile.name").value("John Updated"));
+                .andExpect(jsonPath("$.profile.fatherName").value("Rajesh Sharma"));
     }
 
     @Test
