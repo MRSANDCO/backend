@@ -96,7 +96,8 @@ class EmployeeControllerTest {
         res.setProfileStatus(ProfileStatus.SUBMITTED);
         res.setFormCompleted(true);
 
-        when(employeeService.submitProfile("EMP1001", null)).thenReturn(res);
+        when(employeeService.submitProfile(eq("EMP1001"), any(UpdateProfileRequest.class))).thenReturn(res);
+        when(employeeService.submitProfile(eq("EMP1001"), any(UpdateProfileRequest.class), any())).thenReturn(res);
 
         mockMvc.perform(post("/api/employee/profile/submit"))
                 .andExpect(status().isOk())
@@ -127,6 +128,32 @@ class EmployeeControllerTest {
                                   "date_of_joining": "2025-01-15"
                                 }
                                 """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.profileStatus").value("SUBMITTED"))
+                .andExpect(jsonPath("$.formCompleted").value(true))
+                .andExpect(jsonPath("$.profile.fatherName").value("Rajesh Sharma"));
+    }
+
+    @Test
+    @WithMockUser(username = "EMP1001", roles = "EMPLOYEE")
+    @DisplayName("POST /api/employee/profile/submit — 200 handles single-step multipart submit with file and form data")
+    void submitProfile_multipart_success() throws Exception {
+        byte[] pdfBytes = "%PDF-1.4\nvalid".getBytes();
+        MockMultipartFile file = new MockMultipartFile("aadhaarFile", "aadhaar.pdf", "application/pdf", pdfBytes);
+
+        EmployeeProfileResponse res = new EmployeeProfileResponse();
+        res.setEmployeeId("EMP1001");
+        res.setFatherName("Rajesh Sharma");
+        res.setAadhaarNumber("123456789012");
+        res.setProfileStatus(ProfileStatus.SUBMITTED);
+        res.setFormCompleted(true);
+
+        when(employeeService.submitProfile(eq("EMP1001"), any(UpdateProfileRequest.class), any())).thenReturn(res);
+
+        mockMvc.perform(multipart("/api/employee/profile/submit")
+                        .file(file)
+                        .param("fatherName", "Rajesh Sharma")
+                        .param("aadhaarNumber", "123456789012"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.profileStatus").value("SUBMITTED"))
                 .andExpect(jsonPath("$.formCompleted").value(true))

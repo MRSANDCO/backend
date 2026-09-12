@@ -289,16 +289,40 @@ public class EmployeeService {
     }
 
     /**
-     * Employee submits complete profile with optional form payload.
+     * Employee submits complete profile with optional form payload and optional Aadhaar PDF document.
      * Validates all required profile fields and document upload.
      */
-    public EmployeeProfileResponse submitProfile(String employeeId, UpdateProfileRequest request) {
+    public EmployeeProfileResponse submitProfile(String employeeId, UpdateProfileRequest request, MultipartFile file) throws IOException {
         Employee employee = findEmployeeOrThrow(employeeId);
 
         if (employee.getProfileStatus() == ProfileStatus.SUBMITTED || Boolean.TRUE.equals(employee.getFormCompleted())) {
             throw new SecurityException("Profile is already submitted.");
         }
 
+        // 1. If document is provided during final submit, store in GridFS
+        if (file != null && !file.isEmpty()) {
+            validatePdfFile(file);
+            if (employee.getAadhaarGridFsId() != null && !employee.getAadhaarGridFsId().isBlank()) {
+                try {
+                    gridFsTemplate.delete(new Query(Criteria.where("_id").is(new ObjectId(employee.getAadhaarGridFsId()))));
+                } catch (Exception e) {
+                    log.warn("Could not delete old GridFS document during final submit: {}", e.getMessage());
+                }
+            }
+            String originalFileName = file.getOriginalFilename() != null ? file.getOriginalFilename() : "aadhaar_document.pdf";
+            ObjectId gridFsId;
+            try (InputStream is = file.getInputStream()) {
+                gridFsId = gridFsTemplate.store(is, originalFileName, "application/pdf");
+            }
+            employee.setAadhaarGridFsId(gridFsId.toHexString());
+            employee.setAadhaarFileName(originalFileName);
+            employee.setAadhaarFileSize(file.getSize());
+            employee.setAadhaarDocumentUrl("/api/employee/profile/document");
+            employee.setDocumentStatus(DocumentVerificationStatus.PENDING);
+            employee.setDocumentRejectionReason(null);
+        }
+
+        // 2. Apply profile updates if request is provided
         if (request != null) {
             applyProfileUpdates(employee, request);
             userRepository.findByUserId(employeeId).ifPresent(user -> {
@@ -312,9 +336,10 @@ public class EmployeeService {
             });
         }
 
-        // Validate completeness
+        // 3. Validate completeness (checks Sections A-D + Aadhaar PDF upload)
         validateCompletenessForSubmission(employee);
 
+        // 4. Mark profile as submitted
         employee.setProfileStatus(ProfileStatus.SUBMITTED);
         employee.setFormCompleted(true);
         Employee saved = employeeRepository.save(employee);
@@ -323,8 +348,20 @@ public class EmployeeService {
         return toProfileResponse(saved);
     }
 
+    public EmployeeProfileResponse submitProfile(String employeeId, UpdateProfileRequest request) {
+        try {
+            return submitProfile(employeeId, request, null);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     public EmployeeProfileResponse submitProfile(String employeeId) {
-        return submitProfile(employeeId, null);
+        try {
+            return submitProfile(employeeId, null, null);
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to submit profile: " + e.getMessage(), e);
+        }
     }
 
     /**
