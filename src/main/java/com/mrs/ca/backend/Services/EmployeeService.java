@@ -326,18 +326,22 @@ public class EmployeeService {
     }
 
     /**
-     * Employee uploads Aadhaar / ID proof PDF.
+     * Employee uploads Aadhaar / ID proof PDF with optional draft profile fields.
      * Must reject with 403 SecurityException if profileStatus == SUBMITTED.
      */
-    public EmployeeProfileResponse uploadDocumentByEmployee(String employeeId, MultipartFile file) throws IOException {
+    public EmployeeProfileResponse uploadDocumentByEmployee(String employeeId, MultipartFile file, UpdateProfileRequest draftRequest) throws IOException {
         Employee employee = findEmployeeOrThrow(employeeId);
 
-        if (employee.getProfileStatus() == ProfileStatus.SUBMITTED) {
+        if (employee.getProfileStatus() == ProfileStatus.SUBMITTED || Boolean.TRUE.equals(employee.getFormCompleted())) {
             log.warn("[ACCESS DENIED] Employee '{}' attempted to upload document after profile submission", employeeId);
             throw new SecurityException("Profile has already been submitted. Documents cannot be modified or replaced. Contact Admin.");
         }
 
         validatePdfFile(file);
+
+        if (draftRequest != null) {
+            applyProfileUpdates(employee, draftRequest);
+        }
 
         // If replacing an unverified existing file, delete old GridFS binary
         if (employee.getAadhaarGridFsId() != null && !employee.getAadhaarGridFsId().isBlank()) {
@@ -363,6 +367,10 @@ public class EmployeeService {
                 employeeId, gridFsId.toHexString());
 
         return toProfileResponse(saved);
+    }
+
+    public EmployeeProfileResponse uploadDocumentByEmployee(String employeeId, MultipartFile file) throws IOException {
+        return uploadDocumentByEmployee(employeeId, file, null);
     }
 
     /**

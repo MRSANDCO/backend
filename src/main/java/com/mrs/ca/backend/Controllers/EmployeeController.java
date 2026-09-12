@@ -68,17 +68,13 @@ public class EmployeeController {
     }
 
     /**
-     * Employee submits complete profile with optional payload and optional document file. Locks profile from further edits.
+     * Employee submits complete profile with final form payload. Locks profile from further edits.
+     * Document must be uploaded prior to final submission via POST /api/employee/profile/document.
      */
-    @PostMapping(value = "/submit", consumes = {MediaType.APPLICATION_JSON_VALUE, MediaType.MULTIPART_FORM_DATA_VALUE, MediaType.APPLICATION_FORM_URLENCODED_VALUE, MediaType.ALL_VALUE})
-    public ResponseEntity<?> submitMyProfile(
-            @RequestBody(required = false) UpdateProfileRequest requestBody,
-            @RequestParam(value = "file", required = false) MultipartFile file) {
+    @PostMapping(value = "/submit", consumes = {MediaType.APPLICATION_JSON_VALUE, MediaType.APPLICATION_FORM_URLENCODED_VALUE, MediaType.ALL_VALUE})
+    public ResponseEntity<?> submitMyProfile(@RequestBody(required = false) UpdateProfileRequest requestBody) {
         String employeeId = getAuthenticatedEmployeeId();
         try {
-            if (file != null && !file.isEmpty()) {
-                employeeService.uploadDocumentByEmployee(employeeId, file);
-            }
             EmployeeProfileResponse submitted = employeeService.submitProfile(employeeId, requestBody);
             return ResponseEntity.ok(Map.of(
                     "message", "Profile submitted successfully and locked for review",
@@ -91,21 +87,21 @@ public class EmployeeController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
-        } catch (IOException e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("error", "Failed to store document during submission: " + e.getMessage()));
         }
     }
 
     /**
      * Employee uploads Aadhaar / ID proof PDF (only allowed before submission).
+     * Optionally saves draft profile fields sent alongside the file without completing submission.
      * Returns 403 Forbidden if profileStatus == SUBMITTED.
      */
     @PostMapping(value = "/document", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<?> uploadDocument(@RequestParam("file") MultipartFile file) {
+    public ResponseEntity<?> uploadDocument(
+            @RequestParam("file") MultipartFile file,
+            @RequestPart(value = "request", required = false) UpdateProfileRequest draftRequest) {
         String employeeId = getAuthenticatedEmployeeId();
         try {
-            EmployeeProfileResponse profile = employeeService.uploadDocumentByEmployee(employeeId, file);
+            EmployeeProfileResponse profile = employeeService.uploadDocumentByEmployee(employeeId, file, draftRequest);
             return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
                     "message", "Document uploaded successfully",
                     "fileName", profile.getAadhaarFileName() != null ? profile.getAadhaarFileName() : "",

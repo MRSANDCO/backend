@@ -145,7 +145,7 @@ class EmployeeControllerTest {
         res.setDocumentStatus(DocumentVerificationStatus.PENDING);
         res.setProfileStatus(ProfileStatus.INCOMPLETE);
 
-        when(employeeService.uploadDocumentByEmployee(eq("EMP1001"), any())).thenReturn(res);
+        when(employeeService.uploadDocumentByEmployee(eq("EMP1001"), any(), any())).thenReturn(res);
 
         mockMvc.perform(multipart("/api/employee/profile/document").file(file))
                 .andExpect(status().isCreated())
@@ -162,7 +162,7 @@ class EmployeeControllerTest {
         byte[] pdfBytes = "%PDF-1.4\nvalid".getBytes();
         MockMultipartFile file = new MockMultipartFile("file", "id.pdf", "application/pdf", pdfBytes);
 
-        when(employeeService.uploadDocumentByEmployee(eq("EMP1001"), any()))
+        when(employeeService.uploadDocumentByEmployee(eq("EMP1001"), any(), any()))
                 .thenThrow(new SecurityException("Profile has already been submitted. Documents cannot be modified"));
 
         mockMvc.perform(multipart("/api/employee/profile/document").file(file))
