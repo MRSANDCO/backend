@@ -88,17 +88,43 @@ class EmployeeControllerTest {
 
     @Test
     @WithMockUser(username = "EMP1001", roles = "EMPLOYEE")
-    @DisplayName("POST /api/employee/profile/submit — 200 successfully locks profile")
+    @DisplayName("POST /api/employee/profile/submit — 200 successfully locks profile and returns formCompleted=true")
     void submitProfile_success() throws Exception {
         EmployeeProfileResponse res = new EmployeeProfileResponse();
         res.setEmployeeId("EMP1001");
         res.setProfileStatus(ProfileStatus.SUBMITTED);
+        res.setFormCompleted(true);
 
-        when(employeeService.submitProfile("EMP1001")).thenReturn(res);
+        when(employeeService.submitProfile("EMP1001", null)).thenReturn(res);
 
         mockMvc.perform(post("/api/employee/profile/submit"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.profileStatus").value("SUBMITTED"));
+                .andExpect(jsonPath("$.profileStatus").value("SUBMITTED"))
+                .andExpect(jsonPath("$.formCompleted").value(true))
+                .andExpect(jsonPath("$.isFormCompleted").value(true));
+    }
+
+    @Test
+    @WithMockUser(username = "EMP1001", roles = "EMPLOYEE")
+    @DisplayName("POST /api/employee/profile/submit — 200 updates profile payload and locks profile")
+    void submitProfile_withBody_success() throws Exception {
+        EmployeeProfileResponse res = new EmployeeProfileResponse();
+        res.setEmployeeId("EMP1001");
+        res.setName("John Updated");
+        res.setProfileStatus(ProfileStatus.SUBMITTED);
+        res.setFormCompleted(true);
+
+        when(employeeService.submitProfile(eq("EMP1001"), any(UpdateProfileRequest.class))).thenReturn(res);
+
+        mockMvc.perform(post("/api/employee/profile/submit")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"John Updated"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.profileStatus").value("SUBMITTED"))
+                .andExpect(jsonPath("$.formCompleted").value(true))
+                .andExpect(jsonPath("$.profile.name").value("John Updated"));
     }
 
     @Test

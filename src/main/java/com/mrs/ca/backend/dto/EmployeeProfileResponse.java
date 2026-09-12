@@ -24,6 +24,7 @@ public class EmployeeProfileResponse {
     private String aadhaarFileName;
     private Long aadhaarFileSize;
     private ProfileStatus profileStatus;
+    private Boolean formCompleted;
     private DocumentVerificationStatus documentStatus;
     private String documentRejectionReason;
     private Boolean active;
@@ -159,6 +160,18 @@ public class EmployeeProfileResponse {
 
     public void setProfileStatus(ProfileStatus profileStatus) {
         this.profileStatus = profileStatus;
+    }
+
+    public Boolean getFormCompleted() {
+        return Boolean.TRUE.equals(formCompleted) || profileStatus == ProfileStatus.SUBMITTED;
+    }
+
+    public Boolean isFormCompleted() {
+        return getFormCompleted();
+    }
+
+    public void setFormCompleted(Boolean formCompleted) {
+        this.formCompleted = formCompleted;
     }
 
     public DocumentVerificationStatus getDocumentStatus() {

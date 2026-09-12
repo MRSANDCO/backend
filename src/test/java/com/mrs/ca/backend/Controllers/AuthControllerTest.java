@@ -144,6 +144,8 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.role").value("employee"))
                 .andExpect(jsonPath("$.employeeId").value("EMP1001"))
                 .andExpect(jsonPath("$.name").value("John Doe"))
+                .andExpect(jsonPath("$.formCompleted").value(false))
+                .andExpect(jsonPath("$.isFormCompleted").value(false))
                 .andExpect(jsonPath("$.token").exists());
     }
 

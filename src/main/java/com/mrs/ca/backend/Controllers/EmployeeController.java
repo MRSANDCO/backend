@@ -68,16 +68,18 @@ public class EmployeeController {
     }
 
     /**
-     * Employee submits complete profile. Locks profile from further edits.
+     * Employee submits complete profile with optional payload. Locks profile from further edits.
      */
     @PostMapping("/submit")
-    public ResponseEntity<?> submitMyProfile() {
+    public ResponseEntity<?> submitMyProfile(@RequestBody(required = false) UpdateProfileRequest request) {
         String employeeId = getAuthenticatedEmployeeId();
         try {
-            EmployeeProfileResponse submitted = employeeService.submitProfile(employeeId);
+            EmployeeProfileResponse submitted = employeeService.submitProfile(employeeId, request);
             return ResponseEntity.ok(Map.of(
                     "message", "Profile submitted successfully and locked for review",
                     "profileStatus", submitted.getProfileStatus().name(),
+                    "formCompleted", true,
+                    "isFormCompleted", true,
                     "profile", submitted
             ));
         } catch (SecurityException e) {

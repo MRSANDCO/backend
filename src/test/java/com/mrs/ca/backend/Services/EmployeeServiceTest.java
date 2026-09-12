@@ -175,6 +175,35 @@ class EmployeeServiceTest {
             EmployeeProfileResponse response = employeeService.submitProfile("EMP1001");
 
             assertThat(response.getProfileStatus()).isEqualTo(ProfileStatus.SUBMITTED);
+            assertThat(response.getFormCompleted()).isTrue();
+            assertThat(response.isFormCompleted()).isTrue();
+        }
+
+        @Test
+        @DisplayName("employee submit with form payload updates fields, syncs user, and sets formCompleted=true")
+        void submitProfile_withRequestPayload_success() {
+            testEmployee.setAadhaarGridFsId("gridfs-id-123");
+            when(employeeRepository.findByEmployeeId("EMP1001")).thenReturn(Optional.of(testEmployee));
+            when(employeeRepository.save(any(Employee.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(userRepository.findByUserId("EMP1001")).thenReturn(Optional.of(testUser));
+
+            UpdateProfileRequest req = new UpdateProfileRequest();
+            req.setName("Alice Updated");
+            req.setFatherName("Rajesh Sharma");
+            req.setMobileNumber("9876543210");
+            req.setFatherMobileNumber("9876543211");
+            req.setAadhaarNumber("123456789012");
+            req.setPanNumber("ABCDE1234F");
+            req.setDateOfJoining(LocalDate.of(2025, 1, 15));
+            req.setPermanentAddress("123 Main St");
+            req.setCurrentAddress("456 Park Ave");
+
+            EmployeeProfileResponse response = employeeService.submitProfile("EMP1001", req);
+
+            assertThat(response.getProfileStatus()).isEqualTo(ProfileStatus.SUBMITTED);
+            assertThat(response.getFormCompleted()).isTrue();
+            assertThat(response.getName()).isEqualTo("Alice Updated");
+            verify(userRepository).save(argThat(user -> "Alice Updated".equals(user.getFullName())));
         }
 
         @Test

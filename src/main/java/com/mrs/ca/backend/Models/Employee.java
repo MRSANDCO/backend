@@ -65,6 +65,9 @@ public class Employee {
     @Field("profile_status")
     private ProfileStatus profileStatus = ProfileStatus.INCOMPLETE;
 
+    @Field("form_completed")
+    private Boolean formCompleted = false;
+
     @Field("document_status")
     private DocumentVerificationStatus documentStatus = DocumentVerificationStatus.PENDING;
 
@@ -87,6 +90,7 @@ public class Employee {
         this.name = name;
         this.mobileNumber = mobileNumber;
         this.profileStatus = ProfileStatus.INCOMPLETE;
+        this.formCompleted = false;
         this.documentStatus = DocumentVerificationStatus.PENDING;
     }
 
@@ -226,6 +230,24 @@ public class Employee {
 
     public void setProfileStatus(ProfileStatus profileStatus) {
         this.profileStatus = profileStatus;
+        if (profileStatus == ProfileStatus.SUBMITTED) {
+            this.formCompleted = true;
+        }
+    }
+
+    public Boolean getFormCompleted() {
+        return Boolean.TRUE.equals(formCompleted) || profileStatus == ProfileStatus.SUBMITTED;
+    }
+
+    public Boolean isFormCompleted() {
+        return getFormCompleted();
+    }
+
+    public void setFormCompleted(Boolean formCompleted) {
+        this.formCompleted = formCompleted;
+        if (Boolean.TRUE.equals(formCompleted)) {
+            this.profileStatus = ProfileStatus.SUBMITTED;
+        }
     }
 
     public DocumentVerificationStatus getDocumentStatus() {

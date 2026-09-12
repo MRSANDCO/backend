@@ -89,13 +89,17 @@ public class AuthController {
 
         Optional<Employee> employee = employeeService.authenticateEmployee(employeeId.trim(), password);
         if (employee.isPresent()) {
-            String token = jwtUtil.generateToken(employee.get().getEmployeeId(), "employee");
+            Employee emp = employee.get();
+            boolean isCompleted = emp.getProfileStatus() == com.mrs.ca.backend.Models.ProfileStatus.SUBMITTED || Boolean.TRUE.equals(emp.getFormCompleted());
+            String token = jwtUtil.generateToken(emp.getEmployeeId(), "employee");
             return ResponseEntity.ok(Map.of(
                     "message", "Login successful",
                     "role", "employee",
-                    "employeeId", employee.get().getEmployeeId(),
-                    "name", employee.get().getName() != null ? employee.get().getName() : "",
-                    "profileStatus", employee.get().getProfileStatus().name(),
+                    "employeeId", emp.getEmployeeId(),
+                    "name", emp.getName() != null ? emp.getName() : "",
+                    "profileStatus", emp.getProfileStatus().name(),
+                    "formCompleted", isCompleted,
+                    "isFormCompleted", isCompleted,
                     "token", token));
         }
         return ResponseEntity.status(401)

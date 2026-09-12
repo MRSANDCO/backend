@@ -286,24 +286,42 @@ public class EmployeeService {
     }
 
     /**
-     * Employee submits complete profile.
+     * Employee submits complete profile with optional form payload.
      * Validates all required profile fields and document upload.
      */
-    public EmployeeProfileResponse submitProfile(String employeeId) {
+    public EmployeeProfileResponse submitProfile(String employeeId, UpdateProfileRequest request) {
         Employee employee = findEmployeeOrThrow(employeeId);
 
-        if (employee.getProfileStatus() == ProfileStatus.SUBMITTED) {
+        if (employee.getProfileStatus() == ProfileStatus.SUBMITTED || Boolean.TRUE.equals(employee.getFormCompleted())) {
             throw new SecurityException("Profile is already submitted.");
+        }
+
+        if (request != null) {
+            applyProfileUpdates(employee, request);
+            userRepository.findByUserId(employeeId).ifPresent(user -> {
+                if (request.getName() != null && !request.getName().trim().isBlank()) {
+                    user.setFullName(request.getName().trim());
+                }
+                if (request.getMobileNumber() != null && !request.getMobileNumber().trim().isBlank()) {
+                    user.setPhone(cleanMobile(request.getMobileNumber()));
+                }
+                userRepository.save(user);
+            });
         }
 
         // Validate completeness
         validateCompletenessForSubmission(employee);
 
         employee.setProfileStatus(ProfileStatus.SUBMITTED);
+        employee.setFormCompleted(true);
         Employee saved = employeeRepository.save(employee);
 
         log.info("[EMPLOYEE] Successfully submitted complete profile for employeeId='{}'", employeeId);
         return toProfileResponse(saved);
+    }
+
+    public EmployeeProfileResponse submitProfile(String employeeId) {
+        return submitProfile(employeeId, null);
     }
 
     /**
@@ -581,6 +599,7 @@ public class EmployeeService {
         dto.setAadhaarFileName(employee.getAadhaarFileName());
         dto.setAadhaarFileSize(employee.getAadhaarFileSize());
         dto.setProfileStatus(employee.getProfileStatus());
+        dto.setFormCompleted(employee.getProfileStatus() == ProfileStatus.SUBMITTED || Boolean.TRUE.equals(employee.getFormCompleted()));
         dto.setDocumentStatus(employee.getDocumentStatus());
         dto.setDocumentRejectionReason(employee.getDocumentRejectionReason());
         dto.setCreatedAt(employee.getCreatedAt());
