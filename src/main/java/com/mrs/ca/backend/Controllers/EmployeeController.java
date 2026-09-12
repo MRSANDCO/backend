@@ -108,8 +108,15 @@ public class EmployeeController {
             EmployeeProfileResponse profile = employeeService.uploadDocumentByEmployee(employeeId, file);
             return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
                     "message", "Document uploaded successfully",
-                    "fileName", profile.getAadhaarFileName(),
-                    "documentStatus", profile.getDocumentStatus().name()
+                    "fileName", profile.getAadhaarFileName() != null ? profile.getAadhaarFileName() : "",
+                    "aadhaarFileName", profile.getAadhaarFileName() != null ? profile.getAadhaarFileName() : "",
+                    "aadhaarDocumentUrl", profile.getAadhaarDocumentUrl() != null ? profile.getAadhaarDocumentUrl() : "",
+                    "aadhaarFileSize", profile.getAadhaarFileSize() != null ? profile.getAadhaarFileSize() : 0L,
+                    "documentStatus", profile.getDocumentStatus().name(),
+                    "profileStatus", profile.getProfileStatus().name(),
+                    "formCompleted", false,
+                    "isFormCompleted", false,
+                    "profile", profile
             ));
         } catch (SecurityException e) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));

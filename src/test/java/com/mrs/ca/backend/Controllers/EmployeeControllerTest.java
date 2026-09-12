@@ -143,13 +143,16 @@ class EmployeeControllerTest {
         res.setEmployeeId("EMP1001");
         res.setAadhaarFileName("id.pdf");
         res.setDocumentStatus(DocumentVerificationStatus.PENDING);
+        res.setProfileStatus(ProfileStatus.INCOMPLETE);
 
         when(employeeService.uploadDocumentByEmployee(eq("EMP1001"), any())).thenReturn(res);
 
         mockMvc.perform(multipart("/api/employee/profile/document").file(file))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.fileName").value("id.pdf"))
-                .andExpect(jsonPath("$.documentStatus").value("PENDING"));
+                .andExpect(jsonPath("$.documentStatus").value("PENDING"))
+                .andExpect(jsonPath("$.formCompleted").value(false))
+                .andExpect(jsonPath("$.isFormCompleted").value(false));
     }
 
     @Test
