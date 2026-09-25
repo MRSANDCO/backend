@@ -54,11 +54,19 @@ public class AdminEmployeeController {
     public ResponseEntity<?> getAllEmployees(
             @RequestParam(value = "search", required = false) String search,
             @RequestParam(value = "employmentStatus", required = false) String employmentStatus,
+            @RequestParam(value = "status", required = false) String status,
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "20") int size) {
         try {
-            Page<EmployeeProfileResponse> employees =
-                    employeeService.getAllEmployees(search, employmentStatus, page, size);
+            String filter = (employmentStatus != null && !employmentStatus.isBlank())
+                    ? employmentStatus
+                    : status;
+            Page<EmployeeProfileResponse> employees;
+            if (filter != null && !filter.isBlank()) {
+                employees = employeeService.getAllEmployees(search, filter, page, size);
+            } else {
+                employees = employeeService.getAllEmployees(search, page, size);
+            }
             return ResponseEntity.ok(employees);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
@@ -120,17 +128,30 @@ public class AdminEmployeeController {
      */
     @PatchMapping("/{employeeId}/status")
     public ResponseEntity<?> setAccountStatus(@PathVariable String employeeId,
-                                              @RequestBody Map<String, Boolean> request) {
-        if (!request.containsKey("active")) {
-            return ResponseEntity.badRequest().body(Map.of("error", "'active' boolean flag is required"));
+                                              @RequestBody Map<String, Object> request) {
+        if (request == null || (!request.containsKey("active") && !request.containsKey("status") && !request.containsKey("employmentStatus"))) {
+            return ResponseEntity.badRequest().body(Map.of("error", "'active' boolean flag or 'employmentStatus' is required"));
         }
         try {
-            boolean active = Boolean.TRUE.equals(request.get("active"));
-            employeeService.setEmployeeActiveStatus(employeeId, active);
+            EmployeeProfileResponse updated = null;
+            if (request.containsKey("employmentStatus") || request.containsKey("status")) {
+                Object statusObj = request.containsKey("employmentStatus") ? request.get("employmentStatus") : request.get("status");
+                if (statusObj != null && !statusObj.toString().trim().isBlank()) {
+                    EmploymentStatus newStatus = EmploymentStatus.valueOf(statusObj.toString().trim().toUpperCase().replace("-", "_"));
+                    updated = employeeService.updateEmploymentStatus(employeeId, newStatus);
+                }
+            }
+            if (request.containsKey("active")) {
+                boolean active = Boolean.parseBoolean(request.get("active").toString());
+                employeeService.setEmployeeActiveStatus(employeeId, active);
+                if (!active && updated == null) {
+                    updated = employeeService.updateEmploymentStatus(employeeId, EmploymentStatus.EX_EMPLOYEE);
+                }
+            }
             return ResponseEntity.ok(Map.of(
-                    "message", "Employee account active status updated to " + active,
+                    "message", "Employee status updated successfully",
                     "employeeId", employeeId,
-                    "active", active
+                    "employee", updated != null ? updated : employeeService.getEmployeeByIdForAdmin(employeeId)
             ));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
@@ -182,7 +203,10 @@ public class AdminEmployeeController {
      * Requires ADMIN role (enforced by Spring Security at {@code /api/admin/**}).
      * </p>
      */
-    @PatchMapping("/{employeeId}/employment-status")
+    @RequestMapping(
+            value = "/{employeeId}/employment-status",
+            method = {RequestMethod.PATCH, RequestMethod.PUT, RequestMethod.POST}
+    )
     public ResponseEntity<?> updateEmploymentStatus(
             @PathVariable String employeeId,
             @RequestBody UpdateEmploymentStatusRequest request) {
@@ -209,7 +233,7 @@ public class AdminEmployeeController {
 
     /**
      * Permanently delete an employee — removes profile, user account, and GridFS Aadhaar document.
-     * ADMIN only — enforced at security config level (no EMPLOYEE role can reach this endpoint).
+     * ADMIN only — enforced at security config level (no EMPLOYEE role can reach this endpoint).<br>
      * <p>
      * NOTE: Prefer using {@code PATCH /{employeeId}/employment-status} with {@code EX_EMPLOYEE}
      * to preserve historical data when an employee leaves the company.
@@ -242,6 +266,112 @@ public class AdminEmployeeController {
                     "employeeId", employeeId,
                     "documentStatus", updated.getDocumentStatus().name(),
                     "rejectionReason", updated.getDocumentRejectionReason() != null ? updated.getDocumentRejectionReason() : ""
+            ));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    // ===================== Dedicated Active / Ex-Employee list endpoints =====================
+
+    /**
+     * List all ACTIVE employees (pagination + optional search).
+     * Equivalent to GET /employees?employmentStatus=ACTIVE
+     */
+    @GetMapping("/active")
+    public ResponseEntity<?> getActiveEmployees(
+            @RequestParam(value = "search", required = false) String search,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "20") int size) {
+        try {
+            Page<EmployeeProfileResponse> employees =
+                    employeeService.getAllEmployees(search, "ACTIVE", page, size);
+            return ResponseEntity.ok(employees);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * List all EX_EMPLOYEE employees (pagination + optional search).
+     * Equivalent to GET /employees?employmentStatus=EX_EMPLOYEE
+     */
+    @GetMapping("/ex-employees")
+    public ResponseEntity<?> getExEmployees(
+            @RequestParam(value = "search", required = false) String search,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "20") int size) {
+        try {
+            Page<EmployeeProfileResponse> employees =
+                    employeeService.getAllEmployees(search, "EX_EMPLOYEE", page, size);
+            return ResponseEntity.ok(employees);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Shorthand: mark an employee as EX_EMPLOYEE (no request body needed).
+     * Idempotent — calling this on an already-EX_EMPLOYEE record is safe.
+     */
+    @RequestMapping(
+            value = {"/{employeeId}/mark-ex-employee", "/{employeeId}/mark-as-ex-employee", "/{employeeId}/ex-employee"},
+            method = {RequestMethod.POST, RequestMethod.PUT, RequestMethod.PATCH}
+    )
+    public ResponseEntity<?> markAsExEmployee(@PathVariable String employeeId) {
+        try {
+            EmployeeProfileResponse updated =
+                    employeeService.updateEmploymentStatus(employeeId, EmploymentStatus.EX_EMPLOYEE);
+            return ResponseEntity.ok(Map.of(
+                    "message", "Employee marked as ex-employee successfully",
+                    "employeeId", employeeId,
+                    "employmentStatus", updated.getEmploymentStatus().name(),
+                    "employee", updated
+            ));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Admin verifies employee submitted profile.
+     */
+    @RequestMapping(
+            value = {"/{employeeId}/profile/verify", "/{employeeId}/verify"},
+            method = {RequestMethod.POST, RequestMethod.PUT}
+    )
+    public ResponseEntity<?> verifyProfile(@PathVariable String employeeId) {
+        try {
+            EmployeeProfileResponse updated = employeeService.verifyProfile(employeeId);
+            return ResponseEntity.ok(Map.of(
+                    "message", "Profile verified successfully",
+                    "employeeId", employeeId,
+                    "profileStatus", updated.getProfileStatus().name(),
+                    "employee", updated
+            ));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Admin rejects employee submitted profile.
+     */
+    @RequestMapping(
+            value = {"/{employeeId}/profile/reject", "/{employeeId}/reject"},
+            method = {RequestMethod.POST, RequestMethod.PUT}
+    )
+    public ResponseEntity<?> rejectProfile(@PathVariable String employeeId,
+                                           @RequestBody(required = false) DocumentRejectionRequest request) {
+        try {
+            String reason = request != null ? request.getReason() : null;
+            EmployeeProfileResponse updated = employeeService.rejectProfile(employeeId, reason);
+            return ResponseEntity.ok(Map.of(
+                    "message", "Profile rejected successfully",
+                    "employeeId", employeeId,
+                    "profileStatus", updated.getProfileStatus().name(),
+                    "rejectionReason", updated.getDocumentRejectionReason() != null ? updated.getDocumentRejectionReason() : "",
+                    "employee", updated
             ));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));

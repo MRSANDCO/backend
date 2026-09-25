@@ -40,6 +40,8 @@ public class EmployeeProfileResponse {
     private EmploymentStatus employmentStatus;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private LocalDateTime profileSubmittedAt;
+    private LocalDateTime verifiedAt;
 
     public EmployeeProfileResponse() {
     }
@@ -286,5 +288,21 @@ public class EmployeeProfileResponse {
 
     public void setEmploymentStatus(EmploymentStatus employmentStatus) {
         this.employmentStatus = employmentStatus;
+    }
+
+    public LocalDateTime getProfileSubmittedAt() {
+        return profileSubmittedAt;
+    }
+
+    public void setProfileSubmittedAt(LocalDateTime profileSubmittedAt) {
+        this.profileSubmittedAt = profileSubmittedAt;
+    }
+
+    public LocalDateTime getVerifiedAt() {
+        return verifiedAt;
+    }
+
+    public void setVerifiedAt(LocalDateTime verifiedAt) {
+        this.verifiedAt = verifiedAt;
     }
 }

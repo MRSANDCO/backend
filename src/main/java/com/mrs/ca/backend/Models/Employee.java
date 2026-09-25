@@ -103,6 +103,12 @@ public class Employee {
     @Field("employment_status")
     private EmploymentStatus employmentStatus = EmploymentStatus.ACTIVE;
 
+    @Field("profile_submitted_at")
+    private LocalDateTime profileSubmittedAt;
+
+    @Field("verified_at")
+    private LocalDateTime verifiedAt;
+
     @CreatedDate
     @Field("created_at")
     private LocalDateTime createdAt;
@@ -316,13 +322,24 @@ public class Employee {
 
     public void setProfileStatus(ProfileStatus profileStatus) {
         this.profileStatus = profileStatus;
-        if (profileStatus == ProfileStatus.SUBMITTED) {
+        if (profileStatus == ProfileStatus.SUBMITTED ||
+                profileStatus == ProfileStatus.VERIFIED ||
+                profileStatus == ProfileStatus.REJECTED) {
             this.formCompleted = true;
+        }
+        if (profileStatus == ProfileStatus.SUBMITTED && this.profileSubmittedAt == null) {
+            this.profileSubmittedAt = LocalDateTime.now();
+        }
+        if (profileStatus == ProfileStatus.VERIFIED) {
+            this.verifiedAt = LocalDateTime.now();
         }
     }
 
     public Boolean getFormCompleted() {
-        return Boolean.TRUE.equals(formCompleted) || profileStatus == ProfileStatus.SUBMITTED;
+        return Boolean.TRUE.equals(formCompleted)
+                || profileStatus == ProfileStatus.SUBMITTED
+                || profileStatus == ProfileStatus.VERIFIED
+                || profileStatus == ProfileStatus.REJECTED;
     }
 
     public Boolean isFormCompleted() {
@@ -331,8 +348,11 @@ public class Employee {
 
     public void setFormCompleted(Boolean formCompleted) {
         this.formCompleted = formCompleted;
-        if (Boolean.TRUE.equals(formCompleted)) {
+        if (Boolean.TRUE.equals(formCompleted) && this.profileStatus == ProfileStatus.INCOMPLETE) {
             this.profileStatus = ProfileStatus.SUBMITTED;
+            if (this.profileSubmittedAt == null) {
+                this.profileSubmittedAt = LocalDateTime.now();
+            }
         }
     }
 
@@ -374,5 +394,21 @@ public class Employee {
 
     public void setEmploymentStatus(EmploymentStatus employmentStatus) {
         this.employmentStatus = employmentStatus;
+    }
+
+    public LocalDateTime getProfileSubmittedAt() {
+        return profileSubmittedAt;
+    }
+
+    public void setProfileSubmittedAt(LocalDateTime profileSubmittedAt) {
+        this.profileSubmittedAt = profileSubmittedAt;
+    }
+
+    public LocalDateTime getVerifiedAt() {
+        return verifiedAt;
+    }
+
+    public void setVerifiedAt(LocalDateTime verifiedAt) {
+        this.verifiedAt = verifiedAt;
     }
 }

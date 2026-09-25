@@ -74,17 +74,23 @@ public class EmployeeController {
     }
 
     /**
-     * Employee submits complete profile with final form payload (JSON). Locks profile from further edits.
+     * Employee submits complete profile with optional form payload (JSON, form-data, or empty body).
+     * Locks profile from further edits upon submission.
      */
     @RequestMapping(
             value = {"/submit", "/final-submit", "/submit-profile"},
-            method = {RequestMethod.POST, RequestMethod.PUT},
-            consumes = MediaType.APPLICATION_JSON_VALUE
+            method = {RequestMethod.POST, RequestMethod.PUT}
     )
-    public ResponseEntity<?> submitMyProfileJson(@RequestBody(required = false) UpdateProfileRequest requestBody) {
+    public ResponseEntity<?> submitMyProfile(
+            @RequestBody(required = false) UpdateProfileRequest requestBody,
+            @RequestParam Map<String, String> allParams
+    ) {
         String employeeId = getAuthenticatedEmployeeId();
         try {
-            EmployeeProfileResponse submitted = employeeService.submitProfile(employeeId, requestBody);
+            UpdateProfileRequest req = (requestBody != null)
+                    ? requestBody
+                    : buildUpdateRequestFromParams(allParams, null);
+            EmployeeProfileResponse submitted = employeeService.submitProfile(employeeId, req);
             return ResponseEntity.ok(Map.of(
                     "message", "Profile submitted successfully and locked for review",
                     "success", true,
@@ -142,33 +148,6 @@ public class EmployeeController {
         } catch (IOException e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "Failed to store document: " + e.getMessage(), "success", false));
-        }
-    }
-
-    /**
-     * Fallback submit endpoint for form-urlencoded or unspecified content types.
-     */
-    @RequestMapping(
-            value = {"/submit", "/final-submit", "/submit-profile"},
-            method = {RequestMethod.POST, RequestMethod.PUT}
-    )
-    public ResponseEntity<?> submitMyProfileFallback(@RequestParam Map<String, String> allParams) {
-        String employeeId = getAuthenticatedEmployeeId();
-        try {
-            UpdateProfileRequest req = buildUpdateRequestFromParams(allParams, null);
-            EmployeeProfileResponse submitted = employeeService.submitProfile(employeeId, req);
-            return ResponseEntity.ok(Map.of(
-                    "message", "Profile submitted successfully and locked for review",
-                    "success", true,
-                    "profileStatus", submitted.getProfileStatus().name(),
-                    "formCompleted", true,
-                    "isFormCompleted", true,
-                    "profile", submitted
-            ));
-        } catch (SecurityException e) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage(), "success", false));
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage(), "success", false));
         }
     }
 

@@ -32,6 +32,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.regex.Pattern;
 
@@ -162,7 +163,11 @@ public class EmployeeService {
 
         if (hasSearch && statusFilter != null) {
             // Search text + status filter
-            employeePage = employeeRepository.searchEmployeesByStatus(search.trim(), statusFilter, pageable);
+            if (statusFilter == EmploymentStatus.ACTIVE) {
+                employeePage = employeeRepository.searchEmployeesByStatusOrNull(search.trim(), EmploymentStatus.ACTIVE, pageable);
+            } else {
+                employeePage = employeeRepository.searchEmployeesByStatus(search.trim(), statusFilter, pageable);
+            }
         } else if (hasSearch) {
             // Search text only — return all statuses
             employeePage = employeeRepository.searchEmployees(search.trim(), pageable);
@@ -170,7 +175,7 @@ public class EmployeeService {
             // Status filter only (no text search)
             // For ACTIVE: also include legacy docs where employment_status is null
             if (statusFilter == EmploymentStatus.ACTIVE) {
-                employeePage = employeeRepository.searchEmployeesByStatusOrNull("", EmploymentStatus.ACTIVE, pageable);
+                employeePage = employeeRepository.findByEmploymentStatusOrNull(EmploymentStatus.ACTIVE, pageable);
             } else {
                 employeePage = employeeRepository.findByEmploymentStatus(statusFilter, pageable);
             }
@@ -286,6 +291,29 @@ public class EmployeeService {
         return toProfileResponse(saved);
     }
 
+    public EmployeeProfileResponse verifyProfile(String employeeId) {
+        Employee employee = findEmployeeOrThrow(employeeId);
+        employee.setProfileStatus(ProfileStatus.VERIFIED);
+        employee.setVerifiedAt(LocalDateTime.now());
+        if (employee.getAadhaarGridFsId() != null) {
+            employee.setDocumentStatus(DocumentVerificationStatus.VERIFIED);
+            employee.setDocumentRejectionReason(null);
+        }
+        Employee saved = employeeRepository.save(employee);
+        log.info("[ADMIN] Verified profile for employeeId='{}'", employeeId);
+        return toProfileResponse(saved);
+    }
+
+    public EmployeeProfileResponse rejectProfile(String employeeId, String reason) {
+        Employee employee = findEmployeeOrThrow(employeeId);
+        employee.setProfileStatus(ProfileStatus.REJECTED);
+        String r = reason != null && !reason.trim().isBlank() ? reason.trim() : "Rejected by Admin";
+        employee.setDocumentRejectionReason(r);
+        Employee saved = employeeRepository.save(employee);
+        log.info("[ADMIN] Rejected profile for employeeId='{}'", employeeId);
+        return toProfileResponse(saved);
+    }
+
     /**
      * Admin-only: updates the employment lifecycle status of an employee.
      * <p>
@@ -294,7 +322,7 @@ public class EmployeeService {
      * never deleted.
      * </p>
      *
-     * @param employeeId the employee's unique business ID
+     * @param employeeId the employee's unique business ID or DB ID
      * @param newStatus  the target {@link EmploymentStatus} (ACTIVE or EX_EMPLOYEE)
      * @return the updated employee profile
      * @throws IllegalArgumentException if the employee is not found or status is null
@@ -306,7 +334,21 @@ public class EmployeeService {
         Employee employee = findEmployeeOrThrow(employeeId);
         employee.setEmploymentStatus(newStatus);
         Employee saved = employeeRepository.save(employee);
-        log.info("[ADMIN] Employment status changed to '{}' for employeeId='{}'", newStatus, employeeId);
+
+        // Synchronize user login access: ex-employees should not be active
+        if (newStatus == EmploymentStatus.EX_EMPLOYEE) {
+            userRepository.findByUserId(employee.getEmployeeId()).ifPresent(user -> {
+                user.setActive(false);
+                userRepository.save(user);
+            });
+        } else if (newStatus == EmploymentStatus.ACTIVE) {
+            userRepository.findByUserId(employee.getEmployeeId()).ifPresent(user -> {
+                user.setActive(true);
+                userRepository.save(user);
+            });
+        }
+
+        log.info("[ADMIN] Employment status changed to '{}' for employeeId='{}'", newStatus, employee.getEmployeeId());
         return toProfileResponse(saved);
     }
 
@@ -318,9 +360,10 @@ public class EmployeeService {
      * @return total count
      */
     public long countByEmploymentStatus(EmploymentStatus status) {
+        if (status == EmploymentStatus.ACTIVE) {
+            return employeeRepository.countByEmploymentStatusOrNull(EmploymentStatus.ACTIVE);
+        }
         return employeeRepository.countByEmploymentStatus(status);
-    // Note: legacy null-status docs are not counted here; for a fully inclusive
-    // ACTIVE count use countByEmploymentStatus(ACTIVE) + countByNullStatus if needed.
     }
 
     // =========================================================================
@@ -372,8 +415,9 @@ public class EmployeeService {
     public EmployeeProfileResponse submitProfile(String employeeId, UpdateProfileRequest request, MultipartFile file) throws IOException {
         Employee employee = findEmployeeOrThrow(employeeId);
 
+        // Idempotent: if profile was already submitted, return the saved record without error
         if (employee.getProfileStatus() == ProfileStatus.SUBMITTED || Boolean.TRUE.equals(employee.getFormCompleted())) {
-            throw new SecurityException("Profile is already submitted.");
+            return toProfileResponse(employee);
         }
 
         // 1. If document is provided during final submit, store in GridFS
@@ -616,7 +660,11 @@ public class EmployeeService {
     }
 
     public Employee findEmployeeOrThrow(String employeeId) {
+        if (employeeId == null || employeeId.isBlank()) {
+            throw new IllegalArgumentException("Employee ID cannot be empty");
+        }
         return employeeRepository.findByEmployeeId(employeeId)
+                .or(() -> employeeRepository.findById(employeeId))
                 .orElseThrow(() -> new IllegalArgumentException("Employee with ID '" + employeeId + "' not found"));
     }
 
@@ -737,37 +785,23 @@ public class EmployeeService {
         if (employee.getMobileNumber() == null || employee.getMobileNumber().isBlank()) {
             throw new IllegalArgumentException("Mobile Number is required for profile submission");
         }
-        if (employee.getFatherMobileNumber() == null || employee.getFatherMobileNumber().isBlank()) {
-            throw new IllegalArgumentException("Father's Mobile Number is required for profile submission");
-        }
         if (employee.getAadhaarNumber() == null || employee.getAadhaarNumber().isBlank()) {
             throw new IllegalArgumentException("Aadhaar Number is required for profile submission");
         }
         if (employee.getPanNumber() == null || employee.getPanNumber().isBlank()) {
             throw new IllegalArgumentException("PAN Number is required for profile submission");
         }
-        if (employee.getEmail() == null || employee.getEmail().isBlank()) {
-            throw new IllegalArgumentException("Email Address is required for profile submission");
-        }
-        if ((employee.getAddressLine1() == null || employee.getAddressLine1().isBlank())
-                && (employee.getPermanentAddress() == null || employee.getPermanentAddress().isBlank())) {
-            throw new IllegalArgumentException("Address Line 1 is required for profile submission");
-        }
-        if (employee.getCity() == null || employee.getCity().isBlank()) {
-            throw new IllegalArgumentException("City is required for profile submission");
-        }
-        if (employee.getState() == null || employee.getState().isBlank()) {
-            throw new IllegalArgumentException("State is required for profile submission");
-        }
-        if (employee.getPinCode() == null || employee.getPinCode().isBlank()) {
-            throw new IllegalArgumentException("PIN Code is required for profile submission");
-        }
-        if (employee.getResumeGoogleDriveLink() == null || employee.getResumeGoogleDriveLink().isBlank()) {
-            throw new IllegalArgumentException("Resume Google Drive Link is required for profile submission");
+        // Address: accept either addressLine1+city+state+pinCode or permanentAddress
+        boolean hasStructuredAddress = employee.getAddressLine1() != null && !employee.getAddressLine1().isBlank();
+        boolean hasPermanentAddress = employee.getPermanentAddress() != null && !employee.getPermanentAddress().isBlank();
+        if (!hasStructuredAddress && !hasPermanentAddress) {
+            throw new IllegalArgumentException("Permanent Address (or Address Line 1) is required for profile submission");
         }
         if (employee.getDateOfJoining() == null) {
+            // Default to today if not explicitly provided
             employee.setDateOfJoining(LocalDate.now());
         }
+        // Aadhaar/ID Proof document is mandatory — must be uploaded before submitting
         if (employee.getAadhaarGridFsId() == null || employee.getAadhaarGridFsId().isBlank()) {
             throw new IllegalArgumentException("Aadhaar/ID Proof PDF document must be uploaded before submitting profile");
         }
@@ -832,6 +866,8 @@ public class EmployeeService {
         dto.setAadhaarFileSize(employee.getAadhaarFileSize());
         dto.setProfileStatus(employee.getProfileStatus());
         dto.setFormCompleted(employee.getProfileStatus() == ProfileStatus.SUBMITTED || Boolean.TRUE.equals(employee.getFormCompleted()));
+        dto.setProfileSubmittedAt(employee.getProfileSubmittedAt());
+        dto.setVerifiedAt(employee.getVerifiedAt());
         dto.setDocumentStatus(employee.getDocumentStatus());
         dto.setDocumentRejectionReason(employee.getDocumentRejectionReason());
         dto.setCreatedAt(employee.getCreatedAt());

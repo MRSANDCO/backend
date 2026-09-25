@@ -1,5 +1,7 @@
 package com.mrs.ca.backend.dto;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonSetter;
 import com.mrs.ca.backend.Models.EmploymentStatus;
 
 /**
@@ -18,9 +20,14 @@ import com.mrs.ca.backend.Models.EmploymentStatus;
  */
 public class UpdateEmploymentStatusRequest {
 
+    @JsonAlias({"status", "employment_status", "employmentStatus"})
     private EmploymentStatus employmentStatus;
 
     public UpdateEmploymentStatusRequest() {
+    }
+
+    public UpdateEmploymentStatusRequest(EmploymentStatus employmentStatus) {
+        this.employmentStatus = employmentStatus;
     }
 
     public EmploymentStatus getEmploymentStatus() {
@@ -29,5 +36,13 @@ public class UpdateEmploymentStatusRequest {
 
     public void setEmploymentStatus(EmploymentStatus employmentStatus) {
         this.employmentStatus = employmentStatus;
+    }
+
+    @JsonSetter
+    public void setEmploymentStatus(String statusStr) {
+        if (statusStr != null && !statusStr.trim().isBlank()) {
+            String normalized = statusStr.trim().toUpperCase().replace("-", "_");
+            this.employmentStatus = EmploymentStatus.valueOf(normalized);
+        }
     }
 }

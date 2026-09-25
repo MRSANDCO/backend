@@ -42,6 +42,18 @@ public interface EmployeeRepository extends MongoRepository<Employee, String> {
     long countByEmploymentStatus(EmploymentStatus employmentStatus);
 
     /**
+     * Finds employees by status or where status is null / undefined (for legacy ACTIVE records).
+     */
+    @Query("{ '$or': [ { 'employment_status': ?0 }, { 'employment_status': null }, { 'employment_status': { $exists: false } } ] }")
+    Page<Employee> findByEmploymentStatusOrNull(EmploymentStatus employmentStatus, Pageable pageable);
+
+    /**
+     * Counts employees by status or where status is null / undefined.
+     */
+    @Query(value = "{ '$or': [ { 'employment_status': ?0 }, { 'employment_status': null }, { 'employment_status': { $exists: false } } ] }", count = true)
+    long countByEmploymentStatusOrNull(EmploymentStatus employmentStatus);
+
+    /**
      * Searches employees by name/employeeId/mobile AND filters by employment status.
      * Used when the caller specifies both a search query and a status filter.
      */
@@ -49,9 +61,8 @@ public interface EmployeeRepository extends MongoRepository<Employee, String> {
     Page<Employee> searchEmployeesByStatus(String query, EmploymentStatus employmentStatus, Pageable pageable);
 
     /**
-     * Searches employees (by name/id/mobile) excluding any employment_status filter.
-     * Same as {@link #searchEmployees} but explicitly named for clarity.
+     * Searches employees (by name/id/mobile) where status is matched or null / undefined.
      */
-    @Query("{ '$and': [ { '$or': [ { 'name': { $regex: ?0, $options: 'i' } }, { 'employee_id': { $regex: ?0, $options: 'i' } }, { 'mobile_number': { $regex: ?0, $options: 'i' } } ] }, { '$or': [ { 'employment_status': ?1 }, { 'employment_status': null } ] } ] }")
+    @Query("{ '$and': [ { '$or': [ { 'name': { $regex: ?0, $options: 'i' } }, { 'employee_id': { $regex: ?0, $options: 'i' } }, { 'mobile_number': { $regex: ?0, $options: 'i' } } ] }, { '$or': [ { 'employment_status': ?1 }, { 'employment_status': null }, { 'employment_status': { $exists: false } } ] } ] }")
     Page<Employee> searchEmployeesByStatusOrNull(String query, EmploymentStatus employmentStatus, Pageable pageable);
 }
