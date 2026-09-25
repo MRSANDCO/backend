@@ -11,10 +11,14 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
 import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
+
+    private static final Logger log = LoggerFactory.getLogger(AuthController.class);
 
     private final AdminService adminService;
     private final UserService userService;
@@ -31,23 +35,36 @@ public class AuthController {
 
     @PostMapping("/admin/login")
     public ResponseEntity<?> adminLogin(@RequestBody Map<String, String> request) {
-        String username = request.get("username");
-        String password = request.get("password");
+        log.info("[ADMIN LOGIN] Request received");
+        try {
+            String username = request.get("username");
+            String password = request.get("password");
 
-        if (username == null || password == null) {
-            return ResponseEntity.badRequest()
-                    .body(Map.of("error", "username and password are required"));
-        }
+            if (username == null || password == null) {
+                log.warn("[ADMIN LOGIN] Username or password missing");
+                return ResponseEntity.badRequest()
+                        .body(Map.of("error", "username and password are required"));
+            }
 
-        if (adminService.authenticateAdmin(username, password)) {
-            String token = jwtUtil.generateToken("admin", "admin");
-            return ResponseEntity.ok(Map.of(
-                    "message", "Login successful",
-                    "role", "admin",
-                    "token", token));
+            log.info("[ADMIN LOGIN] Looking up admin credentials");
+            if (adminService.authenticateAdmin(username, password)) {
+                log.info("[ADMIN LOGIN] Password verification completed");
+                log.info("[ADMIN LOGIN] Token generation started");
+                String token = jwtUtil.generateToken("admin", "admin");
+                log.info("[ADMIN LOGIN] Token generation completed");
+                log.info("[ADMIN LOGIN] Sending response");
+                return ResponseEntity.ok(Map.of(
+                        "message", "Login successful",
+                        "role", "admin",
+                        "token", token));
+            }
+            log.warn("[ADMIN LOGIN] Invalid credentials");
+            return ResponseEntity.status(401)
+                    .body(Map.of("error", "Invalid credentials"));
+        } catch (Exception e) {
+            log.error("[ADMIN LOGIN ERROR] Exception during admin login", e);
+            return ResponseEntity.status(500).body(Map.of("error", "Internal Server Error"));
         }
-        return ResponseEntity.status(401)
-                .body(Map.of("error", "Invalid credentials"));
     }
 
     @PostMapping("/user/login")
