@@ -36,6 +36,9 @@ class AnniversaryGreetingServiceTest {
     private AnniversaryEligibilityService eligibilityService;
 
     @Mock
+    private AnniversaryMatchingService matchingService;
+
+    @Mock
     private WhatsAppService whatsAppService;
 
     @Mock
@@ -61,9 +64,10 @@ class AnniversaryGreetingServiceTest {
         lenient().when(anniversaryConfig.getMaxRetryAttempts()).thenReturn(3);
         lenient().when(anniversaryConfig.getRetryInitialIntervalMinutes()).thenReturn(5);
         lenient().when(anniversaryConfig.getRetryMultiplier()).thenReturn(2.0);
+        lenient().when(matchingService.calculateYearsCompleted(any(), any())).thenReturn(7);
 
         greetingService = new AnniversaryGreetingService(
-                anniversaryConfig, eligibilityService, whatsAppService, logRepository, userRepository, mongoTemplate);
+                anniversaryConfig, eligibilityService, matchingService, whatsAppService, logRepository, userRepository, mongoTemplate);
     }
 
     private User createClient() {

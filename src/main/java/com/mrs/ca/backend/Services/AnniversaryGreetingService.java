@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -36,6 +37,7 @@ public class AnniversaryGreetingService {
 
     private final AnniversaryConfig anniversaryConfig;
     private final AnniversaryEligibilityService eligibilityService;
+    private final AnniversaryMatchingService matchingService;
     private final WhatsAppService whatsAppService;
     private final AnniversaryNotificationLogRepository logRepository;
     private final UserRepository userRepository;
@@ -44,12 +46,14 @@ public class AnniversaryGreetingService {
 
     public AnniversaryGreetingService(AnniversaryConfig anniversaryConfig,
                                       AnniversaryEligibilityService eligibilityService,
+                                      AnniversaryMatchingService matchingService,
                                       WhatsAppService whatsAppService,
                                       AnniversaryNotificationLogRepository logRepository,
                                       UserRepository userRepository,
                                       MongoTemplate mongoTemplate) {
         this.anniversaryConfig = anniversaryConfig;
         this.eligibilityService = eligibilityService;
+        this.matchingService = matchingService;
         this.whatsAppService = whatsAppService;
         this.logRepository = logRepository;
         this.userRepository = userRepository;
@@ -110,14 +114,22 @@ public class AnniversaryGreetingService {
         String templateName = anniversaryConfig.getTemplateName();
         String templateLang = anniversaryConfig.getTemplateLanguage();
         String recipientPhone = eligibility.getNormalizedPhone();
+        int yearsCompleted = matchingService.calculateYearsCompleted(client.getFormationDate(), businessDate);
 
-        // Exact variable mapping:
+        // Persist years completed so history records are self-contained
+        persistYearsCompleted(logRecord.getId(), yearsCompleted);
+
+        // Variable mapping:
         // {{1}} = Client contact person's name
         // {{2}} = Company or firm name
-        List<String> bodyParams = List.of(contactPerson, companyName);
+        // {{3}} = Years completed (only when whatsapp.anniversary.include-years-completed=true)
+        List<String> bodyParams = new ArrayList<>(List.of(contactPerson, companyName));
+        if (anniversaryConfig.isIncludeYearsCompleted()) {
+            bodyParams.add(String.valueOf(yearsCompleted));
+        }
 
-        log.info("[ANNIVERSARY-SERVICE] Dispatching anniversary greeting template '{}' ({}) to '{}' ({}) at phone '{}'",
-                templateName, templateLang, contactPerson, companyName, recipientPhone);
+        log.info("[ANNIVERSARY-SERVICE] Dispatching anniversary greeting template '{}' ({}) to '{}' ({}) at phone '{}' (year {})",
+                templateName, templateLang, contactPerson, companyName, recipientPhone, yearsCompleted);
 
         WhatsAppSendResult sendResult = whatsAppService.sendTemplateMessage(
                 recipientPhone, templateName, templateLang, bodyParams);
@@ -184,6 +196,7 @@ public class AnniversaryGreetingService {
 
         String resolvedCompany = resolveCompanyName(client);
         String resolvedContact = resolveContactPersonName(client);
+        int years = matchingService.calculateYearsCompleted(client.getFormationDate(), businessDate);
 
         AnniversaryNotificationLog newLog = new AnniversaryNotificationLog(
                 clientId,
@@ -199,6 +212,7 @@ public class AnniversaryGreetingService {
         newLog.setMaxAttempts(anniversaryConfig.getMaxRetryAttempts());
         newLog.setManualTrigger(manual);
         newLog.setTriggeredBy(triggeredBy != null ? triggeredBy : "SCHEDULER");
+        newLog.setYearsCompleted(years);
         newLog.setCreatedAt(LocalDateTime.now());
         newLog.setUpdatedAt(LocalDateTime.now());
 
@@ -208,6 +222,17 @@ public class AnniversaryGreetingService {
             log.warn("[ANNIVERSARY-SERVICE] DuplicateKeyException caught for client '{}' in year {}. Record created by concurrent instance.",
                     clientId, anniversaryYear);
             return null;
+        }
+    }
+
+    /** Atomically persists the computed yearsCompleted value onto an existing log record. */
+    private void persistYearsCompleted(String logId, int yearsCompleted) {
+        try {
+            Query q = new Query(Criteria.where("_id").is(logId));
+            Update u = new Update().set("years_completed", yearsCompleted);
+            mongoTemplate.updateFirst(q, u, AnniversaryNotificationLog.class);
+        } catch (Exception e) {
+            log.warn("[ANNIVERSARY-SERVICE] Could not persist yearsCompleted for log '{}': {}", logId, e.getMessage());
         }
     }
 

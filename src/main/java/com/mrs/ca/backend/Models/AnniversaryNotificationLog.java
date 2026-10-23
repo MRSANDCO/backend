@@ -49,6 +49,9 @@ public class AnniversaryNotificationLog {
     @Field("anniversary_date")
     private LocalDate anniversaryDate;
 
+    @Field("years_completed")
+    private Integer yearsCompleted;
+
     @Field("notification_type")
     private AnniversaryNotificationType notificationType = AnniversaryNotificationType.COMPANY_FORMATION_ANNIVERSARY;
 
@@ -193,6 +196,14 @@ public class AnniversaryNotificationLog {
 
     public void setAnniversaryDate(LocalDate anniversaryDate) {
         this.anniversaryDate = anniversaryDate;
+    }
+
+    public Integer getYearsCompleted() {
+        return yearsCompleted;
+    }
+
+    public void setYearsCompleted(Integer yearsCompleted) {
+        this.yearsCompleted = yearsCompleted;
     }
 
     public AnniversaryNotificationType getNotificationType() {

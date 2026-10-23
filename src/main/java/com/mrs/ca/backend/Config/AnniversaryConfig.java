@@ -37,6 +37,9 @@ public class AnniversaryConfig {
     @Value("${whatsapp.anniversary.fallback-company-name:Valued Enterprise}")
     private String fallbackCompanyName;
 
+    @Value("${whatsapp.anniversary.include-years-completed:false}")
+    private boolean includeYearsCompleted;
+
     @Value("${whatsapp.anniversary.scheduler.enabled:false}")
     private boolean schedulerEnabled;
 
@@ -99,6 +102,10 @@ public class AnniversaryConfig {
         return (fallbackCompanyName != null && !fallbackCompanyName.isBlank())
                 ? fallbackCompanyName.trim()
                 : "Valued Enterprise";
+    }
+
+    public boolean isIncludeYearsCompleted() {
+        return includeYearsCompleted;
     }
 
     public boolean isSchedulerEnabled() {
