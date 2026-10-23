@@ -1,5 +1,6 @@
 package com.mrs.ca.backend.Repositories;
 
+import com.mrs.ca.backend.Models.ClientType;
 import com.mrs.ca.backend.Models.User;
 import org.springframework.data.mongodb.repository.MongoRepository;
 import org.springframework.stereotype.Repository;
@@ -21,6 +22,18 @@ public interface UserRepository extends MongoRepository<User, String> {
     boolean existsByUserId(String userId);
 
     boolean existsByEmail(String email);
+
+    List<User> findByActiveTrueAndFormationDateIsNotNull();
+
+    List<User> findByActiveTrueAndAnniversaryAutomationEnabledTrueAndFormationDateIsNotNull();
+
+    List<User> findByClientType(ClientType clientType);
+
+    List<User> findByActiveTrueAndClientType(ClientType clientType);
+
+    List<User> findByActiveTrueAndClientTypeAndFormationDateIsNotNull(ClientType clientType);
+
+    List<User> findByClientTypeIsNull();
 
     void deleteByUserId(String userId);
 }

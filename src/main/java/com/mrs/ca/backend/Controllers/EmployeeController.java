@@ -3,7 +3,6 @@ package com.mrs.ca.backend.Controllers;
 import com.mrs.ca.backend.Services.EmployeeService;
 import com.mrs.ca.backend.dto.EmployeeProfileResponse;
 import com.mrs.ca.backend.dto.UpdateProfileRequest;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;

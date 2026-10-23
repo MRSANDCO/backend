@@ -3,6 +3,7 @@ package com.mrs.ca.backend.Controllers;
 import com.mrs.ca.backend.Config.JwtAuthFilter;
 import com.mrs.ca.backend.Config.JwtUtil;
 import com.mrs.ca.backend.Config.SecurityConfig;
+import com.mrs.ca.backend.Models.ClientType;
 import com.mrs.ca.backend.Models.Document;
 import com.mrs.ca.backend.Models.User;
 import com.mrs.ca.backend.Services.AdminService;
@@ -92,6 +93,115 @@ class AdminControllerTest {
                 .andExpect(jsonPath("$.error").value("User ID 'user01' already exists"));
     }
 
+    @Test
+    @DisplayName("POST /api/admin/users — 201 on COMPANY creation with formation date")
+    void createUser_companySuccess() throws Exception {
+        User user = new User("comp01", "pass", "Director John", "director@alpha.com", "admin");
+        user.setId("comp123");
+        user.setPhone("9876543210");
+        user.setClientType(ClientType.COMPANY);
+        user.setCompanyName("Alpha Corp Ltd");
+        user.setFormationDate(java.time.LocalDate.of(2019, 3, 15));
+        user.setAnniversaryAutomationEnabled(true);
+        user.setWhatsappConsentGiven(true);
+
+        when(adminService.createUser(eq("comp01"), eq("pass"), eq("Director John"),
+                eq("director@alpha.com"), eq("9876543210"), eq(ClientType.COMPANY),
+                eq("Alpha Corp Ltd"), isNull(), eq(java.time.LocalDate.of(2019, 3, 15)),
+                eq(true), eq(true)))
+                .thenReturn(user);
+
+        mockMvc.perform(post("/api/admin/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "userId": "comp01",
+                                    "password": "pass",
+                                    "fullName": "Director John",
+                                    "email": "director@alpha.com",
+                                    "phone": "9876543210",
+                                    "clientType": "COMPANY",
+                                    "companyName": "Alpha Corp Ltd",
+                                    "formationDate": "2019-03-15",
+                                    "anniversaryAutomationEnabled": "true",
+                                    "whatsappConsentGiven": "true"
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.userId").value("comp01"))
+                .andExpect(jsonPath("$.clientType").value("COMPANY"))
+                .andExpect(jsonPath("$.companyName").value("Alpha Corp Ltd"))
+                .andExpect(jsonPath("$.formationDate").value("2019-03-15"));
+    }
+
+    @Test
+    @DisplayName("POST /api/admin/users — 201 on INDIVIDUAL creation without company fields")
+    void createUser_individualSuccess() throws Exception {
+        User user = new User("ind01", "pass", "Individual John", "john@ind.com", "admin");
+        user.setId("ind123");
+        user.setPhone("9876543211");
+        user.setClientType(ClientType.INDIVIDUAL);
+        user.setAnniversaryAutomationEnabled(false);
+
+        when(adminService.createUser(eq("ind01"), eq("pass"), eq("Individual John"),
+                eq("john@ind.com"), eq("9876543211"), eq(ClientType.INDIVIDUAL),
+                isNull(), isNull(), isNull(), eq(false), eq(false)))
+                .thenReturn(user);
+
+        mockMvc.perform(post("/api/admin/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "userId": "ind01",
+                                    "password": "pass",
+                                    "fullName": "Individual John",
+                                    "email": "john@ind.com",
+                                    "phone": "9876543211",
+                                    "clientType": "INDIVIDUAL"
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.userId").value("ind01"))
+                .andExpect(jsonPath("$.clientType").value("INDIVIDUAL"))
+                .andExpect(jsonPath("$.formationDate").value(""));
+    }
+
+    @Test
+    @DisplayName("POST /api/admin/users — 400 when invalid clientType provided")
+    void createUser_invalidClientType() throws Exception {
+        mockMvc.perform(post("/api/admin/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "userId": "user_bad_type",
+                                    "password": "pass",
+                                    "clientType": "NOT_A_REAL_TYPE"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("Invalid client type: 'NOT_A_REAL_TYPE'. Allowed values: COMPANY, INDIVIDUAL"));
+    }
+
+    @Test
+    @DisplayName("POST /api/admin/users — 400 when enabling automation for INDIVIDUAL client")
+    void createUser_rejectAutomationForIndividual() throws Exception {
+        when(adminService.createUser(any(), any(), any(), any(), any(), eq(ClientType.INDIVIDUAL), any(), any(), any(), eq(true), anyBoolean()))
+                .thenThrow(new IllegalArgumentException("Anniversary automation cannot be enabled for INDIVIDUAL clients"));
+
+        mockMvc.perform(post("/api/admin/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "userId": "ind_auto",
+                                    "password": "pass",
+                                    "clientType": "INDIVIDUAL",
+                                    "anniversaryAutomationEnabled": "true"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("Anniversary automation cannot be enabled for INDIVIDUAL clients"));
+    }
+
     // ===================== PUT /api/admin/users/{userId} =====================
 
     @Test
@@ -144,6 +254,122 @@ class AdminControllerTest {
         mockMvc.perform(get("/api/admin/users"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].userId").value("user01"));
+    }
+
+    // ===================== GET /api/admin/users/{userId} =====================
+
+    @Test
+    @DisplayName("GET /api/admin/users/{userId} — 200 on success")
+    void getUser_success() throws Exception {
+        User u = new User("user01", "p", "John", "j@m.com", "admin");
+        u.setId("id1");
+        u.setClientType(ClientType.COMPANY);
+        u.setCompanyName("Alpha Corp");
+        u.setFormationDate(java.time.LocalDate.of(2018, 5, 10));
+        when(adminService.getUser("user01")).thenReturn(u);
+
+        mockMvc.perform(get("/api/admin/users/user01"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.userId").value("user01"))
+                .andExpect(jsonPath("$.clientType").value("COMPANY"))
+                .andExpect(jsonPath("$.companyName").value("Alpha Corp"))
+                .andExpect(jsonPath("$.formationDate").value("2018-05-10"));
+    }
+
+    @Test
+    @DisplayName("GET /api/admin/users/{userId} — 404 when not found")
+    void getUser_notFound() throws Exception {
+        when(adminService.getUser("ghost")).thenThrow(new IllegalArgumentException("User 'ghost' not found"));
+
+        mockMvc.perform(get("/api/admin/users/ghost"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("User 'ghost' not found"));
+    }
+
+    @Test
+    @DisplayName("POST /api/admin/users — 400 on malformed formationDate")
+    void createUser_invalidDateFormat() throws Exception {
+        mockMvc.perform(post("/api/admin/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "userId": "user_bad_date",
+                                    "password": "pass",
+                                    "formationDate": "not-a-date"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("Invalid formationDate format. Expected YYYY-MM-DD: 'not-a-date'"));
+    }
+
+    @Test
+    @DisplayName("PUT /api/admin/users/{userId} — 200 on COMPANY update with formation date")
+    void updateUser_companyUpdate() throws Exception {
+        User updated = new User("comp01", "pass", "Director John", "dir@c.com", "admin");
+        updated.setId("id1");
+        updated.setClientType(ClientType.COMPANY);
+        updated.setCompanyName("Acme Holdings");
+        updated.setFormationDate(java.time.LocalDate.of(2020, 1, 15));
+
+        when(adminService.updateUser(eq("comp01"), eq("Director John"), eq("dir@c.com"), isNull(),
+                eq(ClientType.COMPANY), eq("Acme Holdings"), isNull(),
+                eq(java.time.LocalDate.of(2020, 1, 15)), isNull(), isNull()))
+                .thenReturn(updated);
+
+        mockMvc.perform(put("/api/admin/users/comp01")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "fullName": "Director John",
+                                    "email": "dir@c.com",
+                                    "clientType": "COMPANY",
+                                    "companyName": "Acme Holdings",
+                                    "formationDate": "2020-01-15"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.clientType").value("COMPANY"))
+                .andExpect(jsonPath("$.companyName").value("Acme Holdings"))
+                .andExpect(jsonPath("$.formationDate").value("2020-01-15"));
+    }
+
+    @Test
+    @DisplayName("PUT /api/admin/users/{userId} — 200 on INDIVIDUAL update")
+    void updateUser_individualUpdate() throws Exception {
+        User updated = new User("ind01", "pass", "Individual Person", "ind@c.com", "admin");
+        updated.setId("id2");
+        updated.setClientType(ClientType.INDIVIDUAL);
+
+        when(adminService.updateUser(eq("ind01"), eq("Individual Person"), eq("ind@c.com"), isNull(),
+                eq(ClientType.INDIVIDUAL), isNull(), isNull(), isNull(), isNull(), isNull()))
+                .thenReturn(updated);
+
+        mockMvc.perform(put("/api/admin/users/ind01")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "fullName": "Individual Person",
+                                    "email": "ind@c.com",
+                                    "clientType": "INDIVIDUAL"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.clientType").value("INDIVIDUAL"))
+                .andExpect(jsonPath("$.formationDate").value(""));
+    }
+
+    @Test
+    @DisplayName("PUT /api/admin/users/{userId} — 400 on malformed formationDate")
+    void updateUser_invalidDateFormat() throws Exception {
+        mockMvc.perform(put("/api/admin/users/user01")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "formationDate": "15-01-2020"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("Invalid formationDate format. Expected YYYY-MM-DD: '15-01-2020'"));
     }
 
     // ===================== POST /api/admin/users/{userId}/documents =====================

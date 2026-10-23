@@ -138,7 +138,6 @@ class WhatsAppServiceTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void testSendTextMessage_Success() {
         when(whatsAppConfig.getAccessToken()).thenReturn("dummy_access_token");
         when(whatsAppConfig.getPhoneNumberId()).thenReturn("dummy_phone_id");
@@ -157,5 +156,131 @@ class WhatsAppServiceTest {
                 any(HttpEntity.class),
                 eq(WhatsAppMessageResponse.class)
         );
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void testSendTemplateMessage_Success_CompanyAnniversaryGreeting() {
+        when(whatsAppConfig.getAccessToken()).thenReturn("dummy_access_token");
+        when(whatsAppConfig.getPhoneNumberId()).thenReturn("dummy_phone_id");
+        when(whatsAppConfig.getBaseUrl()).thenReturn("https://graph.facebook.com");
+        when(whatsAppConfig.getApiVersion()).thenReturn("v25.0");
+
+        WhatsAppMessageResponse mockResponse = new WhatsAppMessageResponse();
+        WhatsAppMessageResponse.Message msg = new WhatsAppMessageResponse.Message();
+        msg.setId("wamid.mock_anniv_123");
+        mockResponse.setMessages(List.of(msg));
+
+        when(restTemplate.postForEntity(anyString(), any(HttpEntity.class), eq(WhatsAppMessageResponse.class)))
+                .thenReturn(ResponseEntity.ok(mockResponse));
+
+        var result = whatsAppService.sendTemplateMessage(
+                "+91 98765-43210",
+                "company_anniversary_greeting",
+                "en",
+                List.of("John Doe", "Acme Corp Ltd")
+        );
+
+        assertThat(result.isAccepted()).isTrue();
+        assertThat(result.getMetaMessageId()).isEqualTo("wamid.mock_anniv_123");
+
+        ArgumentCaptor<HttpEntity<Map<String, Object>>> captor = ArgumentCaptor.forClass(HttpEntity.class);
+        verify(restTemplate).postForEntity(
+                eq("https://graph.facebook.com/v25.0/dummy_phone_id/messages"),
+                captor.capture(),
+                eq(WhatsAppMessageResponse.class)
+        );
+
+        Map<String, Object> payload = captor.getValue().getBody();
+        assertThat(payload).isNotNull();
+        assertThat(payload.get("to")).isEqualTo("919876543210");
+        assertThat(payload.get("type")).isEqualTo("template");
+
+        Map<String, Object> templateMap = (Map<String, Object>) payload.get("template");
+        assertThat(templateMap.get("name")).isEqualTo("company_anniversary_greeting");
+
+        Map<String, Object> langMap = (Map<String, Object>) templateMap.get("language");
+        assertThat(langMap.get("code")).isEqualTo("en");
+
+        List<Map<String, Object>> components = (List<Map<String, Object>>) templateMap.get("components");
+        assertThat(components).hasSize(1);
+        Map<String, Object> bodyComp = components.get(0);
+        assertThat(bodyComp.get("type")).isEqualTo("body");
+
+        List<Map<String, String>> params = (List<Map<String, String>>) bodyComp.get("parameters");
+        assertThat(params).hasSize(2);
+        assertThat(params.get(0).get("text")).isEqualTo("John Doe");
+        assertThat(params.get(1).get("text")).isEqualTo("Acme Corp Ltd");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void testSendTemplateMessage_SanitizesBlankParameter() {
+        when(whatsAppConfig.getAccessToken()).thenReturn("dummy_access_token");
+        when(whatsAppConfig.getPhoneNumberId()).thenReturn("dummy_phone_id");
+        when(whatsAppConfig.getBaseUrl()).thenReturn("https://graph.facebook.com");
+        when(whatsAppConfig.getApiVersion()).thenReturn("v25.0");
+
+        WhatsAppMessageResponse mockResponse = new WhatsAppMessageResponse();
+        WhatsAppMessageResponse.Message msg = new WhatsAppMessageResponse.Message();
+        msg.setId("wamid.sanitized_123");
+        mockResponse.setMessages(List.of(msg));
+
+        when(restTemplate.postForEntity(anyString(), any(HttpEntity.class), eq(WhatsAppMessageResponse.class)))
+                .thenReturn(ResponseEntity.ok(mockResponse));
+
+        // Pass blank parameter
+        var result = whatsAppService.sendTemplateMessage(
+                "919876543210",
+                "company_anniversary_greeting",
+                "en",
+                List.of("", "Acme Corp Ltd")
+        );
+
+        assertThat(result.isAccepted()).isTrue();
+
+        ArgumentCaptor<HttpEntity<Map<String, Object>>> captor = ArgumentCaptor.forClass(HttpEntity.class);
+        verify(restTemplate).postForEntity(anyString(), captor.capture(), eq(WhatsAppMessageResponse.class));
+
+        Map<String, Object> payload = captor.getValue().getBody();
+        Map<String, Object> templateMap = (Map<String, Object>) payload.get("template");
+        List<Map<String, Object>> components = (List<Map<String, Object>>) templateMap.get("components");
+        List<Map<String, String>> params = (List<Map<String, String>>) components.get(0).get("parameters");
+
+        // Empty string should be replaced with fallback text rather than sending empty parameter to Meta
+        assertThat(params.get(0).get("text")).isEqualTo("Valued Client");
+        assertThat(params.get(1).get("text")).isEqualTo("Acme Corp Ltd");
+    }
+
+    @Test
+    void testSendTemplateMessage_MetaClientError() {
+        when(whatsAppConfig.getAccessToken()).thenReturn("dummy_access_token");
+        when(whatsAppConfig.getPhoneNumberId()).thenReturn("dummy_phone_id");
+        when(whatsAppConfig.getBaseUrl()).thenReturn("https://graph.facebook.com");
+        when(whatsAppConfig.getApiVersion()).thenReturn("v25.0");
+
+        org.springframework.web.client.HttpClientErrorException errorException =
+                org.springframework.web.client.HttpClientErrorException.create(
+                        org.springframework.http.HttpStatus.BAD_REQUEST,
+                        "Bad Request",
+                        org.springframework.http.HttpHeaders.EMPTY,
+                        "{\"error\":{\"message\":\"Template does not exist or pending approval\"}}".getBytes(),
+                        null
+                );
+
+        when(restTemplate.postForEntity(anyString(), any(HttpEntity.class), eq(WhatsAppMessageResponse.class)))
+                .thenThrow(errorException);
+
+        var result = whatsAppService.sendTemplateMessage(
+                "919876543210",
+                "company_anniversary_greeting",
+                "en",
+                List.of("John Doe", "Acme Corp Ltd")
+        );
+
+        assertThat(result.isAccepted()).isFalse();
+        assertThat(result.getErrorCode()).isEqualTo("META_CLIENT_ERROR");
+        assertThat(result.getErrorMessage()).contains("Template does not exist or pending approval");
+        assertThat(result.isRetryable()).isFalse();
     }
 }

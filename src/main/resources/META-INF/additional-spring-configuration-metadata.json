@@ -1,0 +1,154 @@
+{
+  "properties": [
+    {
+      "name": "app.cors.allowed-origins",
+      "type": "java.lang.String",
+      "description": "Allowed origins for CORS requests."
+    },
+    {
+      "name": "app.admin.username",
+      "type": "java.lang.String",
+      "description": "Admin username for basic/JWT access."
+    },
+    {
+      "name": "app.admin.password",
+      "type": "java.lang.String",
+      "description": "Admin password for basic/JWT access."
+    },
+    {
+      "name": "app.jwt.secret",
+      "type": "java.lang.String",
+      "description": "Secret key used for signing JWTs."
+    },
+    {
+      "name": "app.jwt.expiration-ms",
+      "type": "java.lang.Long",
+      "description": "Expiration time of JWTs in milliseconds."
+    },
+    {
+      "name": "app.resend.api-key",
+      "type": "java.lang.String",
+      "description": "Resend API key."
+    },
+    {
+      "name": "app.resend.from-email",
+      "type": "java.lang.String",
+      "description": "Sender email for notifications."
+    },
+    {
+      "name": "app.resend.from-name",
+      "type": "java.lang.String",
+      "description": "Sender name for notifications."
+    },
+    {
+      "name": "app.admin.email",
+      "type": "java.lang.String",
+      "description": "Admin notification email."
+    },
+    {
+      "name": "app.frontend.url",
+      "type": "java.lang.String",
+      "description": "Frontend base URL."
+    },
+    {
+      "name": "app.backend.url",
+      "type": "java.lang.String",
+      "description": "Backend base URL."
+    },
+    {
+      "name": "whatsapp.access-token",
+      "type": "java.lang.String",
+      "description": "Meta WhatsApp Cloud API Access Token."
+    },
+    {
+      "name": "whatsapp.phone-number-id",
+      "type": "java.lang.String",
+      "description": "Meta WhatsApp Phone Number ID."
+    },
+    {
+      "name": "whatsapp.api-version",
+      "type": "java.lang.String",
+      "description": "Meta Graph API version (e.g. v25.0)."
+    },
+    {
+      "name": "whatsapp.base-url",
+      "type": "java.lang.String",
+      "description": "Meta Graph API base URL."
+    },
+    {
+      "name": "whatsapp.template-name",
+      "type": "java.lang.String",
+      "description": "Default query notification WhatsApp template name."
+    },
+    {
+      "name": "whatsapp.template-language",
+      "type": "java.lang.String",
+      "description": "Default query notification WhatsApp template language code."
+    },
+    {
+      "name": "whatsapp.anniversary.template-name",
+      "type": "java.lang.String",
+      "description": "Meta WhatsApp template name for company formation anniversary greetings."
+    },
+    {
+      "name": "whatsapp.anniversary.template-language",
+      "type": "java.lang.String",
+      "description": "Language code for the anniversary greeting template."
+    },
+    {
+      "name": "whatsapp.anniversary.scheduler.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Whether the daily anniversary automated scheduler is enabled."
+    },
+    {
+      "name": "whatsapp.anniversary.scheduler.cron",
+      "type": "java.lang.String",
+      "description": "Cron expression for the anniversary scheduler."
+    },
+    {
+      "name": "whatsapp.anniversary.scheduler.timezone",
+      "type": "java.lang.String",
+      "description": "Timezone for anniversary scheduling (e.g. Asia/Kolkata)."
+    },
+    {
+      "name": "whatsapp.anniversary.scheduler.catch-up-hours",
+      "type": "java.lang.Integer",
+      "description": "Catch-up window in hours for missed anniversary sends."
+    },
+    {
+      "name": "whatsapp.anniversary.leap-day-policy",
+      "type": "java.lang.String",
+      "description": "Anniversary policy for Feb 29 on non-leap years (FEB_28 or MARCH_1)."
+    },
+    {
+      "name": "whatsapp.anniversary.retry.max-attempts",
+      "type": "java.lang.Integer",
+      "description": "Maximum number of retry attempts for failed anniversary notifications."
+    },
+    {
+      "name": "whatsapp.anniversary.retry.initial-interval-minutes",
+      "type": "java.lang.Integer",
+      "description": "Initial retry interval in minutes."
+    },
+    {
+      "name": "whatsapp.anniversary.retry.multiplier",
+      "type": "java.lang.Double",
+      "description": "Backoff multiplier for successive retry attempts."
+    },
+    {
+      "name": "whatsapp.anniversary.sender-name",
+      "type": "java.lang.String",
+      "description": "Sender name for anniversary notifications."
+    },
+    {
+      "name": "whatsapp.webhook.verify-token",
+      "type": "java.lang.String",
+      "description": "Verification token for Meta WhatsApp webhook setup."
+    },
+    {
+      "name": "whatsapp.webhook.app-secret",
+      "type": "java.lang.String",
+      "description": "Meta App Secret for verifying webhook HMAC-SHA256 signatures."
+    }
+  ]
+}

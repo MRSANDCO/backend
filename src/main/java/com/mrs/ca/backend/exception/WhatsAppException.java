@@ -5,6 +5,8 @@ package com.mrs.ca.backend.exception;
  */
 public class WhatsAppException extends RuntimeException {
     
+    private static final long serialVersionUID = 1L;
+
     public WhatsAppException(String message) {
         super(message);
     }

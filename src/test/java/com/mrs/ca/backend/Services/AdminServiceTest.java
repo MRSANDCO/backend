@@ -111,6 +111,53 @@ class AdminServiceTest {
 
             verify(userRepository, never()).save(any());
         }
+
+        @Test
+        @DisplayName("should create COMPANY user with formation date and automation enabled")
+        void createCompanyUser_success() {
+            when(userRepository.existsByUserId("comp01")).thenReturn(false);
+            when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            java.time.LocalDate date = java.time.LocalDate.of(2018, 5, 20);
+            User user = adminService.createUser("comp01", "pass", "Director", "d@c.com", "9876543210",
+                    ClientType.COMPANY, "Acme Corp", "Director Contact", date, true, true);
+
+            assertThat(user.getUserId()).isEqualTo("comp01");
+            assertThat(user.getClientType()).isEqualTo(ClientType.COMPANY);
+            assertThat(user.getCompanyName()).isEqualTo("Acme Corp");
+            assertThat(user.getContactPersonName()).isEqualTo("Director Contact");
+            assertThat(user.getFormationDate()).isEqualTo(date);
+            assertThat(user.isAnniversaryAutomationEnabled()).isTrue();
+            assertThat(user.isWhatsappConsentGiven()).isTrue();
+        }
+
+        @Test
+        @DisplayName("should create INDIVIDUAL user without company fields, disabling anniversary automation")
+        void createIndividualUser_success() {
+            when(userRepository.existsByUserId("ind01")).thenReturn(false);
+            when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            User user = adminService.createUser("ind01", "pass", "Individual Client", "ind@c.com", "9876543211",
+                    ClientType.INDIVIDUAL, null, null, null, false, false);
+
+            assertThat(user.getUserId()).isEqualTo("ind01");
+            assertThat(user.getClientType()).isEqualTo(ClientType.INDIVIDUAL);
+            assertThat(user.getCompanyName()).isNull();
+            assertThat(user.getFormationDate()).isNull();
+            assertThat(user.isAnniversaryAutomationEnabled()).isFalse();
+        }
+
+        @Test
+        @DisplayName("should throw when attempting to enable anniversary automation on INDIVIDUAL user")
+        void createIndividualUser_rejectAutomation() {
+            when(userRepository.existsByUserId("ind02")).thenReturn(false);
+
+            assertThatThrownBy(() ->
+                    adminService.createUser("ind02", "pass", "Individual Client", "ind@c.com", "9876543211",
+                            ClientType.INDIVIDUAL, null, null, null, true, false))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("Anniversary automation cannot be enabled for INDIVIDUAL clients");
+        }
     }
 
     @Test
@@ -140,6 +187,32 @@ class AdminServiceTest {
 
         assertThat(users).hasSize(1);
         verify(userRepository).findAll(any(org.springframework.data.domain.Pageable.class));
+    }
+
+    @Nested
+    @DisplayName("getUser")
+    class GetUser {
+
+        @Test
+        @DisplayName("should return user when found by userId")
+        void success() {
+            User user = new User("u1", "pass", "John", "j@m.com", "admin");
+            when(userRepository.findByUserId("u1")).thenReturn(Optional.of(user));
+
+            User found = adminService.getUser("u1");
+
+            assertThat(found).isSameAs(user);
+        }
+
+        @Test
+        @DisplayName("should throw when user not found")
+        void notFound() {
+            when(userRepository.findByUserId("ghost")).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> adminService.getUser("ghost"))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("not found");
+        }
     }
 
     @Nested
@@ -177,6 +250,41 @@ class AdminServiceTest {
                     .hasMessageContaining("not found");
 
             verify(userRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("should update clientType, formation date, and company details")
+        void updateWithClientType_success() {
+            User existing = new User("user01", "pass", "Old Name", "old@mail.com", "admin");
+            existing.setId("mongoId123");
+
+            when(userRepository.findByUserId("user01")).thenReturn(Optional.of(existing));
+            when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            java.time.LocalDate newDate = java.time.LocalDate.of(2021, 6, 1);
+            User updated = adminService.updateUser("user01", "Updated Name", "upd@mail.com", "9876543210",
+                    ClientType.COMPANY, "Updated Firm", "Contact John", newDate, true, true);
+
+            assertThat(updated.getClientType()).isEqualTo(ClientType.COMPANY);
+            assertThat(updated.getCompanyName()).isEqualTo("Updated Firm");
+            assertThat(updated.getContactPersonName()).isEqualTo("Contact John");
+            assertThat(updated.getFormationDate()).isEqualTo(newDate);
+            assertThat(updated.isAnniversaryAutomationEnabled()).isTrue();
+            assertThat(updated.isWhatsappConsentGiven()).isTrue();
+        }
+
+        @Test
+        @DisplayName("should throw when attempting to enable anniversary automation on INDIVIDUAL user during update")
+        void updateIndividual_rejectAutomation() {
+            User existing = new User("ind01", "pass", "Individual", "ind@mail.com", "admin");
+            existing.setClientType(ClientType.INDIVIDUAL);
+
+            when(userRepository.findByUserId("ind01")).thenReturn(Optional.of(existing));
+
+            assertThatThrownBy(() -> adminService.updateUser("ind01", "Individual", "ind@mail.com", "9876543210",
+                    ClientType.INDIVIDUAL, null, null, null, true, false))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("Anniversary automation cannot be enabled for INDIVIDUAL clients");
         }
     }
 

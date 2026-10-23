@@ -2,8 +2,6 @@ package com.mrs.ca.backend.Controllers;
 
 import com.mrs.ca.backend.Models.DriveLink;
 import com.mrs.ca.backend.Services.DriveLinkService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -13,8 +11,6 @@ import java.util.Map;
 
 @RestController
 public class DriveLinkController {
-
-    private static final Logger log = LoggerFactory.getLogger(DriveLinkController.class);
 
     private final DriveLinkService driveLinkService;
 

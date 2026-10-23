@@ -84,13 +84,50 @@ public class AdminService {
 
     public User createUser(String userId, String password, String fullName,
                            String email, String phone) {
+        return createUser(userId, password, fullName, email, phone, null, null, null, null, false, false);
+    }
+
+    public User createUser(String userId, String password, String fullName,
+                           String email, String phone, String companyName,
+                           String contactPersonName, java.time.LocalDate formationDate,
+                           boolean anniversaryAutomationEnabled, boolean whatsappConsentGiven) {
+        return createUser(userId, password, fullName, email, phone, null, companyName,
+                contactPersonName, formationDate, anniversaryAutomationEnabled, whatsappConsentGiven);
+    }
+
+    public User createUser(String userId, String password, String fullName,
+                           String email, String phone, ClientType clientType,
+                           String companyName, String contactPersonName, java.time.LocalDate formationDate,
+                           boolean anniversaryAutomationEnabled, boolean whatsappConsentGiven) {
 
         if (userRepository.existsByUserId(userId)) {
             throw new IllegalArgumentException("User ID '" + userId + "' already exists");
         }
 
+        if (clientType == ClientType.INDIVIDUAL && anniversaryAutomationEnabled) {
+            throw new IllegalArgumentException("Anniversary automation cannot be enabled for INDIVIDUAL clients");
+        }
+
         User user = new User(userId, passwordEncoder.encode(password), fullName, email, adminUsername);
         user.setPhone(phone);
+        user.setClientType(clientType);
+
+        if (clientType == ClientType.INDIVIDUAL) {
+            user.setAnniversaryAutomationEnabled(false);
+            if (companyName != null && !companyName.isBlank()) user.setCompanyName(companyName.trim());
+            if (contactPersonName != null && !contactPersonName.isBlank()) user.setContactPersonName(contactPersonName.trim());
+            if (formationDate != null) user.setFormationDate(formationDate);
+        } else {
+            if (companyName != null && !companyName.isBlank()) user.setCompanyName(companyName.trim());
+            if (contactPersonName != null && !contactPersonName.isBlank()) user.setContactPersonName(contactPersonName.trim());
+            if (formationDate != null) user.setFormationDate(formationDate);
+            user.setAnniversaryAutomationEnabled(anniversaryAutomationEnabled);
+        }
+
+        user.setWhatsappConsentGiven(whatsappConsentGiven);
+        if (whatsappConsentGiven) {
+            user.setWhatsappConsentDate(java.time.LocalDateTime.now());
+        }
         if (user.getCreatedAt() == null) {
             user.setCreatedAt(java.time.LocalDateTime.now());
         }
@@ -115,6 +152,14 @@ public class AdminService {
     }
 
     /**
+     * Retrieve an individual user by userId.
+     */
+    public User getUser(String userId) {
+        return userRepository.findByUserId(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User '" + userId + "' not found"));
+    }
+
+    /**
      * Change a user's password.
      */
     public User changePassword(String userId, String newPassword) {
@@ -130,17 +175,63 @@ public class AdminService {
      * Preserves primary user identity and ensures immutable identifiers.
      */
     public User updateUser(String userId, String fullName, String email, String phone) {
+        return updateUser(userId, fullName, email, phone, null, null, null, null, null, null);
+    }
+
+    /**
+     * Overloaded update supporting company formation details and preferences.
+     */
+    public User updateUser(String userId, String fullName, String email, String phone,
+                           String companyName, String contactPersonName, java.time.LocalDate formationDate,
+                           Boolean anniversaryAutomationEnabled, Boolean whatsappConsentGiven) {
+        return updateUser(userId, fullName, email, phone, null, companyName, contactPersonName,
+                formationDate, anniversaryAutomationEnabled, whatsappConsentGiven);
+    }
+
+    /**
+     * Overloaded update supporting clientType, company formation details, and preferences.
+     */
+    public User updateUser(String userId, String fullName, String email, String phone,
+                           ClientType clientType, String companyName, String contactPersonName,
+                           java.time.LocalDate formationDate, Boolean anniversaryAutomationEnabled,
+                           Boolean whatsappConsentGiven) {
         User user = userRepository.findByUserId(userId)
                 .orElseThrow(() -> new IllegalArgumentException("User '" + userId + "' not found"));
-        
+
+        if (clientType != null) {
+            user.setClientType(clientType);
+        }
+
+        if (user.getClientType() == ClientType.INDIVIDUAL && Boolean.TRUE.equals(anniversaryAutomationEnabled)) {
+            throw new IllegalArgumentException("Anniversary automation cannot be enabled for INDIVIDUAL clients");
+        }
+
         if (fullName != null) user.setFullName(fullName);
         if (email != null) user.setEmail(email);
         if (phone != null) user.setPhone(phone);
+        if (companyName != null) user.setCompanyName(companyName.trim());
+        if (contactPersonName != null) user.setContactPersonName(contactPersonName.trim());
+        if (formationDate != null) user.setFormationDate(formationDate);
+
+        if (user.getClientType() == ClientType.INDIVIDUAL) {
+            user.setAnniversaryAutomationEnabled(false);
+        } else if (anniversaryAutomationEnabled != null) {
+            user.setAnniversaryAutomationEnabled(anniversaryAutomationEnabled);
+        }
+
+        if (whatsappConsentGiven != null) {
+            user.setWhatsappConsentGiven(whatsappConsentGiven);
+            if (whatsappConsentGiven) {
+                user.setWhatsappConsentDate(java.time.LocalDateTime.now());
+            } else {
+                user.setWhatsappConsentDate(null);
+            }
+        }
         if (user.getCreatedAt() == null) {
             user.setCreatedAt(java.time.LocalDateTime.now());
         }
         user.setUpdatedAt(java.time.LocalDateTime.now());
-        
+
         log.info("[UPDATE] User '{}' details updated by admin.", userId);
         return userRepository.save(user);
     }

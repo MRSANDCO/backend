@@ -1,5 +1,6 @@
 package com.mrs.ca.backend.Controllers;
 
+import com.mrs.ca.backend.Models.ClientType;
 import com.mrs.ca.backend.Models.Document;
 import com.mrs.ca.backend.Models.Query;
 import com.mrs.ca.backend.Models.QueryResponse;
@@ -67,19 +68,63 @@ public class AdminController {
                         .body(Map.of("error", "userId and password are required"));
             }
 
-            User user = adminService.createUser(userId, password, fullName, email, phone);
+            String clientTypeStr = request.get("clientType");
+            if (clientTypeStr == null) {
+                clientTypeStr = request.get("client_type");
+            }
+            ClientType clientType = null;
+            if (clientTypeStr != null && !clientTypeStr.isBlank()) {
+                clientType = ClientType.fromString(clientTypeStr);
+            }
+
+            String formationDateStr = request.get("formationDate");
+            if (formationDateStr == null) {
+                formationDateStr = request.get("formation_date");
+            }
+            java.time.LocalDate formationDate = null;
+            if (formationDateStr != null && !formationDateStr.isBlank()) {
+                try {
+                    formationDate = java.time.LocalDate.parse(formationDateStr.trim());
+                } catch (Exception e) {
+                    throw new IllegalArgumentException("Invalid formationDate format. Expected YYYY-MM-DD: '" + formationDateStr + "'");
+                }
+            }
+            String companyName = request.get("companyName");
+            if (companyName == null) {
+                companyName = request.get("company_name");
+            }
+            String contactPersonName = request.get("contactPersonName");
+            if (contactPersonName == null) {
+                contactPersonName = request.get("contact_person_name");
+            }
+            String autoEnabledStr = request.get("anniversaryAutomationEnabled");
+            if (autoEnabledStr == null) {
+                autoEnabledStr = request.get("anniversary_automation_enabled");
+            }
+            boolean autoEnabled = Boolean.parseBoolean(autoEnabledStr);
+
+            String consentGivenStr = request.get("whatsappConsentGiven");
+            if (consentGivenStr == null) {
+                consentGivenStr = request.get("whatsapp_consent_given");
+            }
+            boolean consentGiven = Boolean.parseBoolean(consentGivenStr);
+
+            boolean hasExtendedFields = request.containsKey("formationDate") || request.containsKey("formation_date") ||
+                    request.containsKey("companyName") || request.containsKey("company_name") ||
+                    request.containsKey("contactPersonName") || request.containsKey("contact_person_name") ||
+                    request.containsKey("anniversaryAutomationEnabled") || request.containsKey("anniversary_automation_enabled") ||
+                    request.containsKey("whatsappConsentGiven") || request.containsKey("whatsapp_consent_given") ||
+                    request.containsKey("clientType") || request.containsKey("client_type");
+
+            User user;
+            if (hasExtendedFields) {
+                user = adminService.createUser(userId, password, fullName, email, phone, clientType,
+                        companyName, contactPersonName, formationDate, autoEnabled, consentGiven);
+            } else {
+                user = adminService.createUser(userId, password, fullName, email, phone);
+            }
             return ResponseEntity.status(HttpStatus.CREATED)
-                    .body(Map.of(
-                            "message", "User created successfully",
-                            "userId", user.getUserId(),
-                            "id", user.getId() != null ? user.getId() : "",
-                            "fullName", user.getFullName() != null ? user.getFullName() : "",
-                            "email", user.getEmail() != null ? user.getEmail() : "",
-                            "phone", user.getPhone() != null ? user.getPhone() : "",
-                            "role", user.getRole(),
-                            "active", user.isActive(),
-                            "user", user
-                    ));
+                    .body(buildUserResponse("User created successfully", user));
 
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
@@ -89,6 +134,16 @@ public class AdminController {
     @GetMapping("/users")
     public ResponseEntity<List<User>> getAllUsers() {
         return ResponseEntity.ok(adminService.getAllUsers());
+    }
+
+    @GetMapping("/users/{userId}")
+    public ResponseEntity<?> getUser(@PathVariable String userId) {
+        try {
+            User user = adminService.getUser(userId);
+            return ResponseEntity.ok(buildUserResponse("User retrieved successfully", user));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", e.getMessage()));
+        }
     }
 
     @PutMapping("/users/{userId}/password")
@@ -115,24 +170,99 @@ public class AdminController {
     public ResponseEntity<?> updateUser(@PathVariable String userId,
                                         @RequestBody Map<String, String> request) {
         try {
-            User user = adminService.updateUser(userId, 
+            String clientTypeStr = request.get("clientType");
+            if (clientTypeStr == null) {
+                clientTypeStr = request.get("client_type");
+            }
+            ClientType clientType = null;
+            if (clientTypeStr != null && !clientTypeStr.isBlank()) {
+                clientType = ClientType.fromString(clientTypeStr);
+            }
+
+            String formationDateStr = request.get("formationDate");
+            if (formationDateStr == null) {
+                formationDateStr = request.get("formation_date");
+            }
+            java.time.LocalDate formationDate = null;
+            if (formationDateStr != null && !formationDateStr.isBlank()) {
+                try {
+                    formationDate = java.time.LocalDate.parse(formationDateStr.trim());
+                } catch (Exception e) {
+                    throw new IllegalArgumentException("Invalid formationDate format. Expected YYYY-MM-DD: '" + formationDateStr + "'");
+                }
+            }
+
+            String companyName = request.get("companyName");
+            if (companyName == null) {
+                companyName = request.get("company_name");
+            }
+
+            String contactPersonName = request.get("contactPersonName");
+            if (contactPersonName == null) {
+                contactPersonName = request.get("contact_person_name");
+            }
+
+            String autoEnabledStr = request.get("anniversaryAutomationEnabled");
+            if (autoEnabledStr == null) {
+                autoEnabledStr = request.get("anniversary_automation_enabled");
+            }
+            Boolean autoEnabled = autoEnabledStr != null ? Boolean.parseBoolean(autoEnabledStr) : null;
+
+            String consentGivenStr = request.get("whatsappConsentGiven");
+            if (consentGivenStr == null) {
+                consentGivenStr = request.get("whatsapp_consent_given");
+            }
+            Boolean consentGiven = consentGivenStr != null ? Boolean.parseBoolean(consentGivenStr) : null;
+
+            boolean hasExtendedFields = request.containsKey("formationDate") || request.containsKey("formation_date") ||
+                    request.containsKey("companyName") || request.containsKey("company_name") ||
+                    request.containsKey("contactPersonName") || request.containsKey("contact_person_name") ||
+                    request.containsKey("anniversaryAutomationEnabled") || request.containsKey("anniversary_automation_enabled") ||
+                    request.containsKey("whatsappConsentGiven") || request.containsKey("whatsapp_consent_given") ||
+                    request.containsKey("clientType") || request.containsKey("client_type");
+
+            User user;
+            if (hasExtendedFields) {
+                user = adminService.updateUser(userId, 
+                                                request.get("fullName"), 
+                                                request.get("email"), 
+                                                request.get("phone"),
+                                                clientType,
+                                                companyName,
+                                                contactPersonName,
+                                                formationDate,
+                                                autoEnabled,
+                                                consentGiven);
+            } else {
+                user = adminService.updateUser(userId, 
                                                 request.get("fullName"), 
                                                 request.get("email"), 
                                                 request.get("phone"));
-            return ResponseEntity.ok(Map.of(
-                    "message", "User updated successfully",
-                    "userId", user.getUserId(),
-                    "id", user.getId() != null ? user.getId() : "",
-                    "fullName", user.getFullName() != null ? user.getFullName() : "",
-                    "email", user.getEmail() != null ? user.getEmail() : "",
-                    "phone", user.getPhone() != null ? user.getPhone() : "",
-                    "role", user.getRole(),
-                    "active", user.isActive(),
-                    "user", user
-            ));
+            }
+            return ResponseEntity.ok(buildUserResponse("User updated successfully", user));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
+    }
+
+    private Map<String, Object> buildUserResponse(String message, User user) {
+        Map<String, Object> resp = new java.util.LinkedHashMap<>();
+        resp.put("message", message);
+        resp.put("userId", user.getUserId());
+        resp.put("id", user.getId() != null ? user.getId() : "");
+        resp.put("fullName", user.getFullName() != null ? user.getFullName() : "");
+        resp.put("clientType", user.getClientType() != null ? user.getClientType().name() : null);
+        resp.put("companyName", user.getEffectiveCompanyName());
+        resp.put("contactPersonName", user.getEffectiveContactPersonName());
+        resp.put("formationDate", user.getFormationDate() != null ? user.getFormationDate().toString() : "");
+        resp.put("anniversaryAutomationEnabled", user.isAnniversaryAutomationEnabled());
+        resp.put("whatsappConsentGiven", user.isWhatsappConsentGiven());
+        resp.put("email", user.getEmail() != null ? user.getEmail() : "");
+        resp.put("phone", user.getPhone() != null ? user.getPhone() : "");
+        resp.put("role", user.getRole());
+        resp.put("active", user.isActive());
+        resp.put("user", user);
+        return resp;
     }
 
     @DeleteMapping("/users/{userId}")

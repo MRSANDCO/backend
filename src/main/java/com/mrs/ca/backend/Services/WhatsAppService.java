@@ -15,7 +15,9 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
+import com.mrs.ca.backend.dto.WhatsAppSendResult;
 
 import java.util.HashMap;
 import java.util.List;
@@ -290,5 +292,120 @@ public class WhatsAppService {
             log.error("[WHATSAPP-TEST] Unexpected error", e);
             return "FAILURE: " + e.getMessage();
         }
+    }
+
+    /**
+     * Dispatches a structured template message to Meta WhatsApp Cloud API.
+     * Reuses existing access token, phone number ID, base URL, and RestTemplate.
+     *
+     * @param to recipient phone number with country code
+     * @param templateName approved Meta template name
+     * @param languageCode template language code (e.g. "en")
+     * @param bodyParameters ordered parameter values for {{1}}, {{2}}, etc.
+     * @return WhatsAppSendResult with acceptance status, Meta message ID, or structured error
+     */
+    public WhatsAppSendResult sendTemplateMessage(String to, String templateName, String languageCode, List<String> bodyParameters) {
+        String accessToken = whatsAppConfig.getAccessToken();
+        String phoneNumberId = whatsAppConfig.getPhoneNumberId();
+        String apiVersion = whatsAppConfig.getApiVersion();
+        String baseUrl = whatsAppConfig.getBaseUrl();
+
+        if (accessToken == null || accessToken.isBlank()) {
+            return WhatsAppSendResult.failure(401, "TOKEN_MISSING", "Meta WhatsApp access token is not configured", false);
+        }
+        if (phoneNumberId == null || phoneNumberId.isBlank()) {
+            return WhatsAppSendResult.failure(400, "PHONE_ID_MISSING", "Meta WhatsApp phone number ID is not configured", false);
+        }
+
+        String normalizedTo = normalizePhoneNumber(to);
+        if (normalizedTo.isEmpty()) {
+            return WhatsAppSendResult.failure(400, "INVALID_PHONE", "Recipient phone number contains no digits", false);
+        }
+
+        List<Map<String, String>> paramMaps = bodyParameters != null
+                ? bodyParameters.stream().map(val -> {
+                    String clean = (val != null && !val.trim().isEmpty()) ? val.trim() : "Valued Client";
+                    return Map.of("type", "text", "text", clean);
+                }).toList()
+                : List.of();
+
+        Map<String, Object> bodyComponent = Map.of(
+                "type", "body",
+                "parameters", paramMaps
+        );
+
+        Map<String, Object> templateMap = Map.of(
+                "name", (templateName != null && !templateName.isBlank()) ? templateName.trim() : "company_anniversary_greeting",
+                "language", Map.of("code", (languageCode != null && !languageCode.isBlank()) ? languageCode.trim() : "en"),
+                "components", List.of(bodyComponent)
+        );
+
+        Map<String, Object> payload = Map.of(
+                "messaging_product", "whatsapp",
+                "recipient_type", "individual",
+                "to", normalizedTo,
+                "type", "template",
+                "template", templateMap
+        );
+
+        String url = String.format("%s/%s/%s/messages",
+                baseUrl.replaceAll("/$", ""), apiVersion, phoneNumberId);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(accessToken);
+
+        HttpEntity<Map<String, Object>> requestEntity = new HttpEntity<>(payload, headers);
+
+        try {
+            log.info("[WHATSAPP-TEMPLATE] Sending template '{}' to recipient '{}' at URL '{}'",
+                    templateName, normalizedTo, url);
+
+            ResponseEntity<WhatsAppMessageResponse> response = restTemplate.postForEntity(
+                    url, requestEntity, WhatsAppMessageResponse.class);
+
+            WhatsAppMessageResponse body = response.getBody();
+            String metaMsgId = (body != null && body.getMessages() != null && !body.getMessages().isEmpty())
+                    ? body.getMessages().get(0).getId()
+                    : null;
+
+            if (metaMsgId == null) {
+                log.warn("[WHATSAPP-TEMPLATE] Meta accepted request without returning a message ID. Status={}", response.getStatusCode());
+                return WhatsAppSendResult.failure(response.getStatusCode().value(), "MISSING_MESSAGE_ID",
+                        "Meta API responded successfully but returned no message ID", false);
+            }
+
+            log.info("[WHATSAPP-TEMPLATE] Template successfully accepted by Meta. Message ID: {}", metaMsgId);
+            return WhatsAppSendResult.success(metaMsgId, response.getStatusCode().value());
+
+        } catch (HttpClientErrorException e) {
+            String respBody = e.getResponseBodyAsString();
+            int status = e.getStatusCode().value();
+            boolean retryable = (status == 429); // Rate limited
+            log.error("[WHATSAPP-TEMPLATE] Meta client error. HTTP {}: {}", status, respBody);
+            return WhatsAppSendResult.failure(status, "META_CLIENT_ERROR", sanitizeErrorMessage(respBody), retryable);
+
+        } catch (HttpServerErrorException e) {
+            String respBody = e.getResponseBodyAsString();
+            int status = e.getStatusCode().value();
+            log.error("[WHATSAPP-TEMPLATE] Meta server error. HTTP {}: {}", status, respBody);
+            return WhatsAppSendResult.failure(status, "META_SERVER_ERROR", sanitizeErrorMessage(respBody), true);
+
+        } catch (ResourceAccessException e) {
+            log.error("[WHATSAPP-TEMPLATE] Network error or timeout communicating with Meta API: {}", e.getMessage());
+            return WhatsAppSendResult.ambiguous(0, "NETWORK_TIMEOUT", "Network timeout communicating with Meta WhatsApp API");
+
+        } catch (Exception e) {
+            log.error("[WHATSAPP-TEMPLATE] Unexpected exception sending WhatsApp template: {}", e.getMessage(), e);
+            return WhatsAppSendResult.failure(500, "INTERNAL_ERROR", e.getMessage(), false);
+        }
+    }
+
+    private String sanitizeErrorMessage(String raw) {
+        if (raw == null) return "Unknown error";
+        if (raw.length() > 250) {
+            return raw.substring(0, 250) + "...";
+        }
+        return raw;
     }
 }

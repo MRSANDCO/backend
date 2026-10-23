@@ -61,6 +61,27 @@ public class User {
     @Field("updated_at")
     private LocalDateTime updatedAt;
 
+    @Field("client_type")
+    private ClientType clientType;
+
+    @Field("company_name")
+    private String companyName;
+
+    @Field("contact_person_name")
+    private String contactPersonName;
+
+    @Field("formation_date")
+    private java.time.LocalDate formationDate;
+
+    @Field("anniversary_automation_enabled")
+    private boolean anniversaryAutomationEnabled = false;
+
+    @Field("whatsapp_consent_given")
+    private boolean whatsappConsentGiven = false;
+
+    @Field("whatsapp_consent_date")
+    private LocalDateTime whatsappConsentDate;
+
     public User() {
     }
 
@@ -176,6 +197,76 @@ public class User {
 
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public String getCompanyName() {
+        return companyName;
+    }
+
+    public void setCompanyName(String companyName) {
+        this.companyName = companyName;
+    }
+
+    public String getContactPersonName() {
+        return contactPersonName;
+    }
+
+    public void setContactPersonName(String contactPersonName) {
+        this.contactPersonName = contactPersonName;
+    }
+
+    public java.time.LocalDate getFormationDate() {
+        return formationDate;
+    }
+
+    public void setFormationDate(java.time.LocalDate formationDate) {
+        this.formationDate = formationDate;
+    }
+
+    public boolean isAnniversaryAutomationEnabled() {
+        return anniversaryAutomationEnabled;
+    }
+
+    public void setAnniversaryAutomationEnabled(boolean anniversaryAutomationEnabled) {
+        this.anniversaryAutomationEnabled = anniversaryAutomationEnabled;
+    }
+
+    public boolean isWhatsappConsentGiven() {
+        return whatsappConsentGiven;
+    }
+
+    public void setWhatsappConsentGiven(boolean whatsappConsentGiven) {
+        this.whatsappConsentGiven = whatsappConsentGiven;
+    }
+
+    public LocalDateTime getWhatsappConsentDate() {
+        return whatsappConsentDate;
+    }
+
+    public void setWhatsappConsentDate(LocalDateTime whatsappConsentDate) {
+        this.whatsappConsentDate = whatsappConsentDate;
+    }
+
+    public ClientType getClientType() {
+        return clientType;
+    }
+
+    public void setClientType(ClientType clientType) {
+        this.clientType = clientType;
+    }
+
+    public String getEffectiveCompanyName() {
+        if (companyName != null && !companyName.isBlank()) {
+            return companyName.trim();
+        }
+        return fullName != null ? fullName.trim() : "";
+    }
+
+    public String getEffectiveContactPersonName() {
+        if (contactPersonName != null && !contactPersonName.isBlank()) {
+            return contactPersonName.trim();
+        }
+        return fullName != null ? fullName.trim() : "";
     }
 
     @Override

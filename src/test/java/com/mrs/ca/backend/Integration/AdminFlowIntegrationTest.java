@@ -1,6 +1,5 @@
 package com.mrs.ca.backend.Integration;
 
-import com.mrs.ca.backend.Models.User;
 import com.mrs.ca.backend.Repositories.UserRepository;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
