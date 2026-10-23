@@ -51,6 +51,7 @@ class BirthdayGreetingServiceTest {
         lenient().when(birthdayConfig.getMaxRetryAttempts()).thenReturn(3);
         lenient().when(birthdayConfig.getRetryInitialIntervalMinutes()).thenReturn(5);
         lenient().when(birthdayConfig.getRetryMultiplier()).thenReturn(2.0);
+        lenient().when(birthdayConfig.isRequireExplicitConsent()).thenReturn(true);
 
         greetingService = new BirthdayGreetingService(
                 birthdayConfig, whatsAppService, logRepository, founderRepository, phoneValidator, mongoTemplate);
@@ -312,5 +313,89 @@ class BirthdayGreetingServiceTest {
                 eq("founder_birthday_greeting"),
                 eq("en"),
                 eq(java.util.List.of("Ravi Shankar")));
+    }
+
+    @Test
+    void processIndividualBirthday_Success_ReturnsAcceptedLog() {
+        com.mrs.ca.backend.Models.User user = new com.mrs.ca.backend.Models.User();
+        user.setUserId("user_ind_1");
+        user.setFullName("Priya Sharma");
+        user.setClientType(com.mrs.ca.backend.Models.ClientType.INDIVIDUAL);
+        user.setDateOfBirth(LocalDate.of(1992, 6, 15));
+        user.setPhone("9876543210");
+        user.setActive(true);
+        user.setBirthdayGreetingEnabled(true);
+        user.setWhatsappConsentGiven(true);
+
+        when(phoneValidator.normalizeAndValidatePhone("9876543210")).thenReturn("919876543210");
+        when(logRepository.findByClientIdAndAnniversaryYearAndNotificationType(
+                "user_ind_1", 2026, AnniversaryNotificationType.FOUNDER_BIRTHDAY))
+                .thenReturn(Optional.empty());
+
+        AnniversaryNotificationLog saved = new AnniversaryNotificationLog(
+                "user_ind_1", "INDIVIDUAL", "Priya Sharma", "Priya Sharma", "919876543210", 2026, BUSINESS_DATE);
+        saved.setId("log_ind_001");
+        saved.setStatus(AnniversaryNotificationStatus.PENDING);
+        when(logRepository.save(any())).thenReturn(saved);
+
+        AnniversaryNotificationLog claimed = new AnniversaryNotificationLog(
+                "user_ind_1", "INDIVIDUAL", "Priya Sharma", "Priya Sharma", "919876543210", 2026, BUSINESS_DATE);
+        claimed.setId("log_ind_001");
+        claimed.setStatus(AnniversaryNotificationStatus.PROCESSING);
+
+        AnniversaryNotificationLog accepted = new AnniversaryNotificationLog(
+                "user_ind_1", "INDIVIDUAL", "Priya Sharma", "Priya Sharma", "919876543210", 2026, BUSINESS_DATE);
+        accepted.setId("log_ind_001");
+        accepted.setStatus(AnniversaryNotificationStatus.ACCEPTED);
+        accepted.setMetaMessageId("wamid.ind001");
+
+        when(mongoTemplate.findAndModify(any(Query.class), any(Update.class),
+                any(FindAndModifyOptions.class), eq(AnniversaryNotificationLog.class)))
+                .thenReturn(claimed)
+                .thenReturn(accepted);
+
+        when(whatsAppService.sendTemplateMessage(
+                eq("919876543210"),
+                eq("founder_birthday_greeting"),
+                eq("en"),
+                eq(java.util.List.of("Priya Sharma"))))
+                .thenReturn(WhatsAppSendResult.success("wamid.ind001", 200));
+
+        Optional<AnniversaryNotificationLog> result =
+                greetingService.processIndividualBirthday(user, BUSINESS_DATE, false, "SCHEDULER");
+
+        assertThat(result).isPresent();
+        assertThat(result.get().getStatus()).isEqualTo(AnniversaryNotificationStatus.ACCEPTED);
+        assertThat(result.get().getMetaMessageId()).isEqualTo("wamid.ind001");
+    }
+
+    @Test
+    void processIndividualBirthday_AlreadySent_ReturnsEmpty() {
+        com.mrs.ca.backend.Models.User user = new com.mrs.ca.backend.Models.User();
+        user.setUserId("user_ind_1");
+        user.setFullName("Priya Sharma");
+        user.setClientType(com.mrs.ca.backend.Models.ClientType.INDIVIDUAL);
+        user.setDateOfBirth(LocalDate.of(1992, 6, 15));
+        user.setPhone("9876543210");
+        user.setActive(true);
+        user.setBirthdayGreetingEnabled(true);
+        user.setWhatsappConsentGiven(true);
+
+        when(phoneValidator.normalizeAndValidatePhone("9876543210")).thenReturn("919876543210");
+
+        AnniversaryNotificationLog existing = new AnniversaryNotificationLog(
+                "user_ind_1", "INDIVIDUAL", "Priya Sharma", "Priya Sharma", "919876543210", 2026, BUSINESS_DATE);
+        existing.setId("log_ind_001");
+        existing.setStatus(AnniversaryNotificationStatus.ACCEPTED);
+
+        when(logRepository.findByClientIdAndAnniversaryYearAndNotificationType(
+                "user_ind_1", 2026, AnniversaryNotificationType.FOUNDER_BIRTHDAY))
+                .thenReturn(Optional.of(existing));
+
+        Optional<AnniversaryNotificationLog> result =
+                greetingService.processIndividualBirthday(user, BUSINESS_DATE, false, "SCHEDULER");
+
+        assertThat(result).isEmpty();
+        verify(whatsAppService, never()).sendTemplateMessage(any(), any(), any(), any());
     }
 }

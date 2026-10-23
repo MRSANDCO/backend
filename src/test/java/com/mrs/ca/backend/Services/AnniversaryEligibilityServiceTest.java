@@ -45,8 +45,24 @@ class AnniversaryEligibilityServiceTest {
 
         lenient().when(anniversaryConfig.getTemplateName()).thenReturn("company_anniversary_greeting");
         lenient().when(anniversaryConfig.getContactFallbackPolicy()).thenReturn(AnniversaryConfig.ContactFallbackPolicy.USE_FALLBACK_VALUE);
+        lenient().when(anniversaryConfig.isRequireExplicitConsent()).thenReturn(true);
         lenient().when(whatsAppConfig.getAccessToken()).thenReturn("valid_token");
         lenient().when(whatsAppConfig.getPhoneNumberId()).thenReturn("valid_phone_id");
+    }
+
+    @Test
+    void testEligible_ConsentNotRequired_WhenPolicyFalse() {
+        when(anniversaryConfig.isRequireExplicitConsent()).thenReturn(false);
+        User client = createValidClient();
+        client.setWhatsappConsentGiven(false);
+        when(matchingService.isAnniversaryToday(client.getFormationDate(), today)).thenReturn(true);
+        when(logRepository.existsByClientIdAndAnniversaryYearAndNotificationType(
+                eq("client_101"), eq(2026), eq(AnniversaryNotificationType.COMPANY_FORMATION_ANNIVERSARY)))
+                .thenReturn(false);
+
+        var result = eligibilityService.evaluateEligibility(client, today);
+
+        assertThat(result.isEligible()).isTrue();
     }
 
     private User createValidClient() {

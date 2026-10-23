@@ -99,12 +99,22 @@ public class AdminService {
                            String email, String phone, ClientType clientType,
                            String companyName, String contactPersonName, java.time.LocalDate formationDate,
                            boolean anniversaryAutomationEnabled, boolean whatsappConsentGiven) {
+        return createUser(userId, password, fullName, email, phone, clientType, companyName,
+                contactPersonName, formationDate, null, anniversaryAutomationEnabled, null, whatsappConsentGiven);
+    }
+
+    public User createUser(String userId, String password, String fullName,
+                           String email, String phone, ClientType clientType,
+                           String companyName, String contactPersonName,
+                           java.time.LocalDate formationDate, java.time.LocalDate dateOfBirth,
+                           Boolean anniversaryAutomationEnabled, Boolean birthdayGreetingEnabled,
+                           Boolean whatsappConsentGiven) {
 
         if (userRepository.existsByUserId(userId)) {
             throw new IllegalArgumentException("User ID '" + userId + "' already exists");
         }
 
-        if (clientType == ClientType.INDIVIDUAL && anniversaryAutomationEnabled) {
+        if (clientType == ClientType.INDIVIDUAL && Boolean.TRUE.equals(anniversaryAutomationEnabled)) {
             throw new IllegalArgumentException("Anniversary automation cannot be enabled for INDIVIDUAL clients");
         }
 
@@ -112,21 +122,35 @@ public class AdminService {
         user.setPhone(phone);
         user.setClientType(clientType);
 
+        if (companyName != null && !companyName.isBlank()) user.setCompanyName(companyName.trim());
+        if (contactPersonName != null && !contactPersonName.isBlank()) user.setContactPersonName(contactPersonName.trim());
+        if (formationDate != null) user.setFormationDate(formationDate);
+        if (dateOfBirth != null) user.setDateOfBirth(dateOfBirth);
+
         if (clientType == ClientType.INDIVIDUAL) {
             user.setAnniversaryAutomationEnabled(false);
-            if (companyName != null && !companyName.isBlank()) user.setCompanyName(companyName.trim());
-            if (contactPersonName != null && !contactPersonName.isBlank()) user.setContactPersonName(contactPersonName.trim());
-            if (formationDate != null) user.setFormationDate(formationDate);
+            user.setBirthdayGreetingEnabled(birthdayGreetingEnabled != null ? birthdayGreetingEnabled : true);
+        } else if (clientType == ClientType.COMPANY) {
+            boolean autoAnniversary = anniversaryAutomationEnabled != null
+                    ? anniversaryAutomationEnabled
+                    : (formationDate != null);
+            user.setAnniversaryAutomationEnabled(autoAnniversary);
+            if (birthdayGreetingEnabled != null) {
+                user.setBirthdayGreetingEnabled(birthdayGreetingEnabled);
+            }
         } else {
-            if (companyName != null && !companyName.isBlank()) user.setCompanyName(companyName.trim());
-            if (contactPersonName != null && !contactPersonName.isBlank()) user.setContactPersonName(contactPersonName.trim());
-            if (formationDate != null) user.setFormationDate(formationDate);
-            user.setAnniversaryAutomationEnabled(anniversaryAutomationEnabled);
+            // Unclassified record
+            user.setAnniversaryAutomationEnabled(Boolean.TRUE.equals(anniversaryAutomationEnabled));
+            if (birthdayGreetingEnabled != null) {
+                user.setBirthdayGreetingEnabled(birthdayGreetingEnabled);
+            }
         }
 
-        user.setWhatsappConsentGiven(whatsappConsentGiven);
-        if (whatsappConsentGiven) {
-            user.setWhatsappConsentDate(java.time.LocalDateTime.now());
+        if (whatsappConsentGiven != null) {
+            user.setWhatsappConsentGiven(whatsappConsentGiven);
+            if (whatsappConsentGiven) {
+                user.setWhatsappConsentDate(java.time.LocalDateTime.now());
+            }
         }
         if (user.getCreatedAt() == null) {
             user.setCreatedAt(java.time.LocalDateTime.now());
@@ -195,6 +219,15 @@ public class AdminService {
                            ClientType clientType, String companyName, String contactPersonName,
                            java.time.LocalDate formationDate, Boolean anniversaryAutomationEnabled,
                            Boolean whatsappConsentGiven) {
+        return updateUser(userId, fullName, email, phone, clientType, companyName, contactPersonName,
+                formationDate, null, anniversaryAutomationEnabled, null, whatsappConsentGiven);
+    }
+
+    public User updateUser(String userId, String fullName, String email, String phone,
+                           ClientType clientType, String companyName, String contactPersonName,
+                           java.time.LocalDate formationDate, java.time.LocalDate dateOfBirth,
+                           Boolean anniversaryAutomationEnabled, Boolean birthdayGreetingEnabled,
+                           Boolean whatsappConsentGiven) {
         User user = userRepository.findByUserId(userId)
                 .orElseThrow(() -> new IllegalArgumentException("User '" + userId + "' not found"));
 
@@ -212,11 +245,29 @@ public class AdminService {
         if (companyName != null) user.setCompanyName(companyName.trim());
         if (contactPersonName != null) user.setContactPersonName(contactPersonName.trim());
         if (formationDate != null) user.setFormationDate(formationDate);
+        if (dateOfBirth != null) user.setDateOfBirth(dateOfBirth);
 
         if (user.getClientType() == ClientType.INDIVIDUAL) {
             user.setAnniversaryAutomationEnabled(false);
-        } else if (anniversaryAutomationEnabled != null) {
-            user.setAnniversaryAutomationEnabled(anniversaryAutomationEnabled);
+            if (birthdayGreetingEnabled != null) {
+                user.setBirthdayGreetingEnabled(birthdayGreetingEnabled);
+            }
+        } else if (user.getClientType() == ClientType.COMPANY) {
+            if (anniversaryAutomationEnabled != null) {
+                user.setAnniversaryAutomationEnabled(anniversaryAutomationEnabled);
+            } else if (formationDate != null && !user.isAnniversaryAutomationEnabled()) {
+                user.setAnniversaryAutomationEnabled(true);
+            }
+            if (birthdayGreetingEnabled != null) {
+                user.setBirthdayGreetingEnabled(birthdayGreetingEnabled);
+            }
+        } else {
+            if (anniversaryAutomationEnabled != null) {
+                user.setAnniversaryAutomationEnabled(anniversaryAutomationEnabled);
+            }
+            if (birthdayGreetingEnabled != null) {
+                user.setBirthdayGreetingEnabled(birthdayGreetingEnabled);
+            }
         }
 
         if (whatsappConsentGiven != null) {

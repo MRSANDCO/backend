@@ -35,5 +35,11 @@ public interface UserRepository extends MongoRepository<User, String> {
 
     List<User> findByClientTypeIsNull();
 
+    List<User> findByActiveTrueAndDateOfBirthIsNotNull();
+
+    List<User> findByClientTypeAndActiveTrueAndDateOfBirthIsNotNull(ClientType clientType);
+
+    List<User> findByClientTypeAndBirthdayMonthAndBirthdayDayAndActiveTrue(ClientType clientType, int birthdayMonth, int birthdayDay);
+
     void deleteByUserId(String userId);
 }

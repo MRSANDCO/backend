@@ -26,6 +26,9 @@ public interface FounderRepository extends MongoRepository<Founder, String> {
     List<Founder> findByBirthdayMonthAndBirthdayDayAndActiveTrueAndBirthdayGreetingEnabledTrueAndWhatsappConsentGivenTrue(
             int birthdayMonth, int birthdayDay);
 
+    List<Founder> findByBirthdayMonthAndBirthdayDayAndActiveTrueAndBirthdayGreetingEnabledTrue(
+            int birthdayMonth, int birthdayDay);
+
     /**
      * Active founders for a given month (used in admin upcoming-birthdays view).
      */

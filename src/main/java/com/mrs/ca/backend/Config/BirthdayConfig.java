@@ -88,6 +88,13 @@ public class BirthdayConfig {
     @Value("${whatsapp.birthday.leap-day-policy:FEB_28}")
     private String leapDayPolicy;
 
+    @Value("${whatsapp.birthday.require-explicit-consent:false}")
+    private boolean requireExplicitConsent;
+
+    public boolean isRequireExplicitConsent() {
+        return requireExplicitConsent;
+    }
+
     public enum LeapDayPolicy {
         FEB_28,
         MARCH_1

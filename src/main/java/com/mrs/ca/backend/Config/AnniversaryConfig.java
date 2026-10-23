@@ -73,6 +73,13 @@ public class AnniversaryConfig {
     @Value("${whatsapp.webhook.app-secret:}")
     private String webhookAppSecret;
 
+    @Value("${whatsapp.anniversary.require-explicit-consent:false}")
+    private boolean requireExplicitConsent;
+
+    public boolean isRequireExplicitConsent() {
+        return requireExplicitConsent;
+    }
+
     public String getTemplateName() {
         return (templateName != null && !templateName.isBlank())
                 ? templateName.trim()

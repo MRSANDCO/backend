@@ -89,6 +89,23 @@ public class AdminController {
                     throw new IllegalArgumentException("Invalid formationDate format. Expected YYYY-MM-DD: '" + formationDateStr + "'");
                 }
             }
+
+            String dobStr = request.get("dateOfBirth");
+            if (dobStr == null) {
+                dobStr = request.get("date_of_birth");
+            }
+            if (dobStr == null) {
+                dobStr = request.get("dob");
+            }
+            java.time.LocalDate dateOfBirth = null;
+            if (dobStr != null && !dobStr.isBlank()) {
+                try {
+                    dateOfBirth = java.time.LocalDate.parse(dobStr.trim());
+                } catch (Exception e) {
+                    throw new IllegalArgumentException("Invalid dateOfBirth format. Expected YYYY-MM-DD: '" + dobStr + "'");
+                }
+            }
+
             String companyName = request.get("companyName");
             if (companyName == null) {
                 companyName = request.get("company_name");
@@ -101,15 +118,26 @@ public class AdminController {
             if (autoEnabledStr == null) {
                 autoEnabledStr = request.get("anniversary_automation_enabled");
             }
-            boolean autoEnabled = Boolean.parseBoolean(autoEnabledStr);
+            Boolean autoEnabled = autoEnabledStr != null ? Boolean.parseBoolean(autoEnabledStr) : null;
+
+            String birthdayAutoStr = request.get("birthdayGreetingEnabled");
+            if (birthdayAutoStr == null) {
+                birthdayAutoStr = request.get("birthday_greeting_enabled");
+            }
+            Boolean birthdayGreetingEnabled = birthdayAutoStr != null ? Boolean.parseBoolean(birthdayAutoStr) : null;
 
             String consentGivenStr = request.get("whatsappConsentGiven");
             if (consentGivenStr == null) {
                 consentGivenStr = request.get("whatsapp_consent_given");
             }
-            boolean consentGiven = Boolean.parseBoolean(consentGivenStr);
+            Boolean consentGiven = consentGivenStr != null ? Boolean.parseBoolean(consentGivenStr) : null;
 
-            boolean hasExtendedFields = request.containsKey("formationDate") || request.containsKey("formation_date") ||
+            boolean hasBirthdayFields = request.containsKey("dateOfBirth") || request.containsKey("date_of_birth") ||
+                    request.containsKey("dob") || request.containsKey("birthdayGreetingEnabled") ||
+                    request.containsKey("birthday_greeting_enabled");
+
+            boolean hasExtendedFields = hasBirthdayFields ||
+                    request.containsKey("formationDate") || request.containsKey("formation_date") ||
                     request.containsKey("companyName") || request.containsKey("company_name") ||
                     request.containsKey("contactPersonName") || request.containsKey("contact_person_name") ||
                     request.containsKey("anniversaryAutomationEnabled") || request.containsKey("anniversary_automation_enabled") ||
@@ -117,9 +145,15 @@ public class AdminController {
                     request.containsKey("clientType") || request.containsKey("client_type");
 
             User user;
-            if (hasExtendedFields) {
+            if (hasBirthdayFields) {
                 user = adminService.createUser(userId, password, fullName, email, phone, clientType,
-                        companyName, contactPersonName, formationDate, autoEnabled, consentGiven);
+                        companyName, contactPersonName, formationDate, dateOfBirth,
+                        autoEnabled, birthdayGreetingEnabled, consentGiven);
+            } else if (hasExtendedFields) {
+                user = adminService.createUser(userId, password, fullName, email, phone, clientType,
+                        companyName, contactPersonName, formationDate,
+                        autoEnabled != null ? autoEnabled : false,
+                        consentGiven != null ? consentGiven : false);
             } else {
                 user = adminService.createUser(userId, password, fullName, email, phone);
             }
@@ -192,6 +226,22 @@ public class AdminController {
                 }
             }
 
+            String dobStr = request.get("dateOfBirth");
+            if (dobStr == null) {
+                dobStr = request.get("date_of_birth");
+            }
+            if (dobStr == null) {
+                dobStr = request.get("dob");
+            }
+            java.time.LocalDate dateOfBirth = null;
+            if (dobStr != null && !dobStr.isBlank()) {
+                try {
+                    dateOfBirth = java.time.LocalDate.parse(dobStr.trim());
+                } catch (Exception e) {
+                    throw new IllegalArgumentException("Invalid dateOfBirth format. Expected YYYY-MM-DD: '" + dobStr + "'");
+                }
+            }
+
             String companyName = request.get("companyName");
             if (companyName == null) {
                 companyName = request.get("company_name");
@@ -208,13 +258,24 @@ public class AdminController {
             }
             Boolean autoEnabled = autoEnabledStr != null ? Boolean.parseBoolean(autoEnabledStr) : null;
 
+            String birthdayAutoStr = request.get("birthdayGreetingEnabled");
+            if (birthdayAutoStr == null) {
+                birthdayAutoStr = request.get("birthday_greeting_enabled");
+            }
+            Boolean birthdayGreetingEnabled = birthdayAutoStr != null ? Boolean.parseBoolean(birthdayAutoStr) : null;
+
             String consentGivenStr = request.get("whatsappConsentGiven");
             if (consentGivenStr == null) {
                 consentGivenStr = request.get("whatsapp_consent_given");
             }
             Boolean consentGiven = consentGivenStr != null ? Boolean.parseBoolean(consentGivenStr) : null;
 
-            boolean hasExtendedFields = request.containsKey("formationDate") || request.containsKey("formation_date") ||
+            boolean hasBirthdayFields = request.containsKey("dateOfBirth") || request.containsKey("date_of_birth") ||
+                    request.containsKey("dob") || request.containsKey("birthdayGreetingEnabled") ||
+                    request.containsKey("birthday_greeting_enabled");
+
+            boolean hasExtendedFields = hasBirthdayFields ||
+                    request.containsKey("formationDate") || request.containsKey("formation_date") ||
                     request.containsKey("companyName") || request.containsKey("company_name") ||
                     request.containsKey("contactPersonName") || request.containsKey("contact_person_name") ||
                     request.containsKey("anniversaryAutomationEnabled") || request.containsKey("anniversary_automation_enabled") ||
@@ -222,7 +283,20 @@ public class AdminController {
                     request.containsKey("clientType") || request.containsKey("client_type");
 
             User user;
-            if (hasExtendedFields) {
+            if (hasBirthdayFields) {
+                user = adminService.updateUser(userId,
+                                                request.get("fullName"),
+                                                request.get("email"),
+                                                request.get("phone"),
+                                                clientType,
+                                                companyName,
+                                                contactPersonName,
+                                                formationDate,
+                                                dateOfBirth,
+                                                autoEnabled,
+                                                birthdayGreetingEnabled,
+                                                consentGiven);
+            } else if (hasExtendedFields) {
                 user = adminService.updateUser(userId, 
                                                 request.get("fullName"), 
                                                 request.get("email"), 
@@ -252,10 +326,13 @@ public class AdminController {
         resp.put("id", user.getId() != null ? user.getId() : "");
         resp.put("fullName", user.getFullName() != null ? user.getFullName() : "");
         resp.put("clientType", user.getClientType() != null ? user.getClientType().name() : null);
+        resp.put("classificationRequired", user.getClientType() == null);
         resp.put("companyName", user.getEffectiveCompanyName());
         resp.put("contactPersonName", user.getEffectiveContactPersonName());
         resp.put("formationDate", user.getFormationDate() != null ? user.getFormationDate().toString() : "");
+        resp.put("dateOfBirth", user.getDateOfBirth() != null ? user.getDateOfBirth().toString() : "");
         resp.put("anniversaryAutomationEnabled", user.isAnniversaryAutomationEnabled());
+        resp.put("birthdayGreetingEnabled", user.isBirthdayGreetingEnabled());
         resp.put("whatsappConsentGiven", user.isWhatsappConsentGiven());
         resp.put("email", user.getEmail() != null ? user.getEmail() : "");
         resp.put("phone", user.getPhone() != null ? user.getPhone() : "");

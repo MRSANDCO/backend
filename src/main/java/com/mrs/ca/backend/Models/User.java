@@ -82,6 +82,18 @@ public class User {
     @Field("whatsapp_consent_date")
     private LocalDateTime whatsappConsentDate;
 
+    @Field("date_of_birth")
+    private java.time.LocalDate dateOfBirth;
+
+    @Field("birthday_month")
+    private Integer birthdayMonth;
+
+    @Field("birthday_day")
+    private Integer birthdayDay;
+
+    @Field("birthday_greeting_enabled")
+    private Boolean birthdayGreetingEnabled = true;
+
     public User() {
     }
 
@@ -255,6 +267,45 @@ public class User {
         this.clientType = clientType;
     }
 
+    public java.time.LocalDate getDateOfBirth() {
+        return dateOfBirth;
+    }
+
+    public void setDateOfBirth(java.time.LocalDate dateOfBirth) {
+        this.dateOfBirth = dateOfBirth;
+        if (dateOfBirth != null) {
+            this.birthdayMonth = dateOfBirth.getMonthValue();
+            this.birthdayDay = dateOfBirth.getDayOfMonth();
+        } else {
+            this.birthdayMonth = null;
+            this.birthdayDay = null;
+        }
+    }
+
+    public Integer getBirthdayMonth() {
+        return birthdayMonth;
+    }
+
+    public void setBirthdayMonth(Integer birthdayMonth) {
+        this.birthdayMonth = birthdayMonth;
+    }
+
+    public Integer getBirthdayDay() {
+        return birthdayDay;
+    }
+
+    public void setBirthdayDay(Integer birthdayDay) {
+        this.birthdayDay = birthdayDay;
+    }
+
+    public boolean isBirthdayGreetingEnabled() {
+        return birthdayGreetingEnabled == null || birthdayGreetingEnabled;
+    }
+
+    public void setBirthdayGreetingEnabled(Boolean birthdayGreetingEnabled) {
+        this.birthdayGreetingEnabled = birthdayGreetingEnabled != null ? birthdayGreetingEnabled : true;
+    }
+
     public String getEffectiveCompanyName() {
         if (companyName != null && !companyName.isBlank()) {
             return companyName.trim();
@@ -275,6 +326,9 @@ public class User {
                 "id='" + id + '\'' +
                 ", userId='" + userId + '\'' +
                 ", fullName='" + fullName + '\'' +
+                ", clientType=" + clientType +
+                ", formationDate=" + formationDate +
+                ", dateOfBirth=" + dateOfBirth +
                 ", email='" + email + '\'' +
                 ", active=" + active +
                 '}';

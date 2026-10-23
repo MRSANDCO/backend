@@ -13,10 +13,14 @@ public class AnniversaryClientDto {
     private String contactPersonName;
     private String phone;
     private LocalDate formationDate;
+    private LocalDate dateOfBirth;
     private boolean anniversaryAutomationEnabled;
+    private boolean birthdayGreetingEnabled;
     private boolean whatsappConsentGiven;
     private int yearsCompleted;
     private boolean anniversaryToday;
+    private boolean birthdayToday;
+    private boolean classificationRequired;
     private String latestNotificationStatus;
 
     public AnniversaryClientDto() {}
@@ -42,8 +46,14 @@ public class AnniversaryClientDto {
     public LocalDate getFormationDate() { return formationDate; }
     public void setFormationDate(LocalDate formationDate) { this.formationDate = formationDate; }
 
+    public LocalDate getDateOfBirth() { return dateOfBirth; }
+    public void setDateOfBirth(LocalDate dateOfBirth) { this.dateOfBirth = dateOfBirth; }
+
     public boolean isAnniversaryAutomationEnabled() { return anniversaryAutomationEnabled; }
     public void setAnniversaryAutomationEnabled(boolean anniversaryAutomationEnabled) { this.anniversaryAutomationEnabled = anniversaryAutomationEnabled; }
+
+    public boolean isBirthdayGreetingEnabled() { return birthdayGreetingEnabled; }
+    public void setBirthdayGreetingEnabled(boolean birthdayGreetingEnabled) { this.birthdayGreetingEnabled = birthdayGreetingEnabled; }
 
     public boolean isWhatsappConsentGiven() { return whatsappConsentGiven; }
     public void setWhatsappConsentGiven(boolean whatsappConsentGiven) { this.whatsappConsentGiven = whatsappConsentGiven; }
@@ -53,6 +63,12 @@ public class AnniversaryClientDto {
 
     public boolean isAnniversaryToday() { return anniversaryToday; }
     public void setAnniversaryToday(boolean anniversaryToday) { this.anniversaryToday = anniversaryToday; }
+
+    public boolean isBirthdayToday() { return birthdayToday; }
+    public void setBirthdayToday(boolean birthdayToday) { this.birthdayToday = birthdayToday; }
+
+    public boolean isClassificationRequired() { return classificationRequired; }
+    public void setClassificationRequired(boolean classificationRequired) { this.classificationRequired = classificationRequired; }
 
     public String getLatestNotificationStatus() { return latestNotificationStatus; }
     public void setLatestNotificationStatus(String latestNotificationStatus) { this.latestNotificationStatus = latestNotificationStatus; }

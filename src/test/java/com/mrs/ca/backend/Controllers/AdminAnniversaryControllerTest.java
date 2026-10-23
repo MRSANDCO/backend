@@ -23,6 +23,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.data.domain.Sort;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -254,5 +255,39 @@ class AdminAnniversaryControllerTest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         verify(schedulerService).executeAnniversaryJobForDate(today, "admin_user");
+    }
+
+    @Test
+    void testGetAllClients_returnsAllClients() {
+        User client1 = createClient("c1", "Company One", LocalDate.of(2018, 10, 10));
+        User client2 = createClient("c2", null, null);
+        client2.setClientType(ClientType.INDIVIDUAL);
+        client2.setDateOfBirth(LocalDate.of(1990, 1, 1));
+
+        when(userRepository.findAll(Sort.by(Sort.Direction.DESC, "createdAt")))
+                .thenReturn(List.of(client1, client2));
+
+        ResponseEntity<List<AnniversaryClientDto>> response = controller.getAllClients();
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).hasSize(2);
+        assertThat(response.getBody().get(1).getDateOfBirth()).isEqualTo(LocalDate.of(1990, 1, 1));
+    }
+
+    @Test
+    void testUpdateIndividualSettings_savesDateOfBirth() {
+        User client = createClient("ind1", null, null);
+        client.setClientType(ClientType.INDIVIDUAL);
+        when(userRepository.findByUserId("ind1")).thenReturn(Optional.of(client));
+
+        AnniversarySettingsRequest request = new AnniversarySettingsRequest();
+        request.setDateOfBirth(LocalDate.of(1995, 5, 20));
+        request.setBirthdayGreetingEnabled(true);
+
+        ResponseEntity<?> response = controller.updateClientAnniversarySettings("ind1", request);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(client.getDateOfBirth()).isEqualTo(LocalDate.of(1995, 5, 20));
+        assertThat(client.getBirthdayMonth()).isEqualTo(5);
+        assertThat(client.getBirthdayDay()).isEqualTo(20);
+        assertThat(client.isBirthdayGreetingEnabled()).isTrue();
     }
 }

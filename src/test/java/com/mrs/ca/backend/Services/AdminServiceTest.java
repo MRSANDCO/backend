@@ -158,6 +158,24 @@ class AdminServiceTest {
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("Anniversary automation cannot be enabled for INDIVIDUAL clients");
         }
+
+        @Test
+        @DisplayName("should create INDIVIDUAL user with dateOfBirth and birthdayGreetingEnabled")
+        void createIndividualUser_withDateOfBirth() {
+            when(userRepository.existsByUserId("ind_dob")).thenReturn(false);
+            when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            java.time.LocalDate dob = java.time.LocalDate.of(1993, 8, 25);
+            User user = adminService.createUser("ind_dob", "pass", "Individual Client", "ind@c.com", "9876543211",
+                    ClientType.INDIVIDUAL, null, null, null, dob, false, true, false);
+
+            assertThat(user.getUserId()).isEqualTo("ind_dob");
+            assertThat(user.getClientType()).isEqualTo(ClientType.INDIVIDUAL);
+            assertThat(user.getDateOfBirth()).isEqualTo(dob);
+            assertThat(user.getBirthdayMonth()).isEqualTo(8);
+            assertThat(user.getBirthdayDay()).isEqualTo(25);
+            assertThat(user.isBirthdayGreetingEnabled()).isTrue();
+        }
     }
 
     @Test
@@ -285,6 +303,25 @@ class AdminServiceTest {
                     ClientType.INDIVIDUAL, null, null, null, true, false))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("Anniversary automation cannot be enabled for INDIVIDUAL clients");
+        }
+
+        @Test
+        @DisplayName("should update INDIVIDUAL user with dateOfBirth and birthdayGreetingEnabled")
+        void updateIndividualUser_withDateOfBirth() {
+            User existing = new User("ind_dob", "pass", "Individual", "ind@mail.com", "admin");
+            existing.setClientType(ClientType.INDIVIDUAL);
+
+            when(userRepository.findByUserId("ind_dob")).thenReturn(Optional.of(existing));
+            when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            java.time.LocalDate dob = java.time.LocalDate.of(1994, 11, 12);
+            User updated = adminService.updateUser("ind_dob", "Individual Updated", "ind2@mail.com", "9876543210",
+                    ClientType.INDIVIDUAL, null, null, null, dob, false, true, false);
+
+            assertThat(updated.getDateOfBirth()).isEqualTo(dob);
+            assertThat(updated.getBirthdayMonth()).isEqualTo(11);
+            assertThat(updated.getBirthdayDay()).isEqualTo(12);
+            assertThat(updated.isBirthdayGreetingEnabled()).isTrue();
         }
     }
 

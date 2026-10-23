@@ -49,6 +49,11 @@ import java.util.Optional;
  * GET    /birthday/history/{id}        – Single notification log entry
  * </pre>
  */
+import com.mrs.ca.backend.Models.ClientType;
+import com.mrs.ca.backend.Models.User;
+import com.mrs.ca.backend.Repositories.UserRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+
 @RestController
 @RequestMapping("/api/admin/founders")
 public class AdminFounderController {
@@ -62,6 +67,26 @@ public class AdminFounderController {
     private final WhatsAppService whatsAppService;
     private final BirthdayConfig birthdayConfig;
     private final AnniversaryNotificationLogRepository logRepository;
+    private final UserRepository userRepository;
+
+    @Autowired
+    public AdminFounderController(FounderService founderService,
+                                  FounderRepository founderRepository,
+                                  BirthdayGreetingService greetingService,
+                                  BirthdaySchedulerService schedulerService,
+                                  WhatsAppService whatsAppService,
+                                  BirthdayConfig birthdayConfig,
+                                  AnniversaryNotificationLogRepository logRepository,
+                                  UserRepository userRepository) {
+        this.founderService = founderService;
+        this.founderRepository = founderRepository;
+        this.greetingService = greetingService;
+        this.schedulerService = schedulerService;
+        this.whatsAppService = whatsAppService;
+        this.birthdayConfig = birthdayConfig;
+        this.logRepository = logRepository;
+        this.userRepository = userRepository;
+    }
 
     public AdminFounderController(FounderService founderService,
                                   FounderRepository founderRepository,
@@ -70,18 +95,21 @@ public class AdminFounderController {
                                   WhatsAppService whatsAppService,
                                   BirthdayConfig birthdayConfig,
                                   AnniversaryNotificationLogRepository logRepository) {
-        this.founderService = founderService;
-        this.founderRepository = founderRepository;
-        this.greetingService = greetingService;
-        this.schedulerService = schedulerService;
-        this.whatsAppService = whatsAppService;
-        this.birthdayConfig = birthdayConfig;
-        this.logRepository = logRepository;
+        this(founderService, founderRepository, greetingService, schedulerService, whatsAppService, birthdayConfig, logRepository, null);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
     //  FOUNDER CRUD
     // ═══════════════════════════════════════════════════════════════════════════
+
+    /**
+     * List all founders across all companies.
+     * GET /api/admin/founders
+     */
+    @GetMapping
+    public ResponseEntity<List<Founder>> getAllFounders() {
+        return ResponseEntity.ok(founderRepository.findAll());
+    }
 
     /**
      * Create a founder.
@@ -131,6 +159,12 @@ public class AdminFounderController {
     public ResponseEntity<?> getFounder(@PathVariable String founderId) {
         Optional<Founder> founderOpt = founderService.findById(founderId);
         if (founderOpt.isEmpty()) {
+            if (userRepository != null) {
+                Optional<User> userOpt = userRepository.findByUserId(founderId);
+                if (userOpt.isPresent()) {
+                    return ResponseEntity.ok(toPseudoFounder(userOpt.get()));
+                }
+            }
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(Map.of("error", "Founder '" + founderId + "' not found"));
         }
@@ -222,20 +256,37 @@ public class AdminFounderController {
     // ═══════════════════════════════════════════════════════════════════════════
 
     /**
-     * List active founders whose birthday is today.
+     * List active founders and individual clients whose birthday is today.
      * GET /api/admin/founders/birthday/today
      */
     @GetMapping("/birthday/today")
     public ResponseEntity<List<Founder>> getTodayBirthdayFounders() {
         LocalDate today = schedulerService.getCurrentBusinessDate();
-        List<Founder> todayBirthdays = founderRepository
-                .findByBirthdayMonthAndBirthdayDayAndActiveTrueAndBirthdayGreetingEnabledTrueAndWhatsappConsentGivenTrue(
-                        today.getMonthValue(), today.getDayOfMonth());
+        List<Founder> todayBirthdays = new java.util.ArrayList<>();
+        if (birthdayConfig.isRequireExplicitConsent()) {
+            todayBirthdays.addAll(founderRepository
+                    .findByBirthdayMonthAndBirthdayDayAndActiveTrueAndBirthdayGreetingEnabledTrueAndWhatsappConsentGivenTrue(
+                            today.getMonthValue(), today.getDayOfMonth()));
+        } else {
+            todayBirthdays.addAll(founderRepository
+                    .findByBirthdayMonthAndBirthdayDayAndActiveTrueAndBirthdayGreetingEnabledTrue(
+                            today.getMonthValue(), today.getDayOfMonth()));
+        }
+
+        if (userRepository != null) {
+            List<User> individuals = userRepository.findByClientTypeAndBirthdayMonthAndBirthdayDayAndActiveTrue(
+                    ClientType.INDIVIDUAL, today.getMonthValue(), today.getDayOfMonth());
+            for (User u : individuals) {
+                if (u.isBirthdayGreetingEnabled() && (!birthdayConfig.isRequireExplicitConsent() || u.isWhatsappConsentGiven())) {
+                    todayBirthdays.add(toPseudoFounder(u));
+                }
+            }
+        }
         return ResponseEntity.ok(todayBirthdays);
     }
 
     /**
-     * List founders with birthdays in the upcoming N days (1–60).
+     * List founders and individual clients with birthdays in the upcoming N days (1–60).
      * GET /api/admin/founders/birthday/upcoming?days=7
      */
     @GetMapping("/birthday/upcoming")
@@ -247,10 +298,25 @@ public class AdminFounderController {
 
         for (int i = 1; i <= clampedDays; i++) {
             LocalDate futureDate = today.plusDays(i);
-            List<Founder> dayFounders = founderRepository
-                    .findByBirthdayMonthAndBirthdayDayAndActiveTrueAndBirthdayGreetingEnabledTrueAndWhatsappConsentGivenTrue(
-                            futureDate.getMonthValue(), futureDate.getDayOfMonth());
-            result.addAll(dayFounders);
+            int m = futureDate.getMonthValue();
+            int d = futureDate.getDayOfMonth();
+            if (birthdayConfig.isRequireExplicitConsent()) {
+                result.addAll(founderRepository
+                        .findByBirthdayMonthAndBirthdayDayAndActiveTrueAndBirthdayGreetingEnabledTrueAndWhatsappConsentGivenTrue(m, d));
+            } else {
+                result.addAll(founderRepository
+                        .findByBirthdayMonthAndBirthdayDayAndActiveTrueAndBirthdayGreetingEnabledTrue(m, d));
+            }
+
+            if (userRepository != null) {
+                List<User> individuals = userRepository.findByClientTypeAndBirthdayMonthAndBirthdayDayAndActiveTrue(
+                        ClientType.INDIVIDUAL, m, d);
+                for (User u : individuals) {
+                    if (u.isBirthdayGreetingEnabled() && (!birthdayConfig.isRequireExplicitConsent() || u.isWhatsappConsentGiven())) {
+                        result.add(toPseudoFounder(u));
+                    }
+                }
+            }
         }
 
         return ResponseEntity.ok(result);
@@ -322,7 +388,7 @@ public class AdminFounderController {
     }
 
     /**
-     * Manually trigger a birthday greeting for a specific founder.
+     * Manually trigger a birthday greeting for a specific founder or individual client.
      * POST /api/admin/founders/birthday/trigger/{founderId}
      *
      * <p>Optional query param {@code date=YYYY-MM-DD} overrides the business date
@@ -333,12 +399,6 @@ public class AdminFounderController {
             @PathVariable String founderId,
             @RequestParam(required = false) String date,
             Authentication auth) {
-
-        Optional<Founder> founderOpt = founderService.findById(founderId);
-        if (founderOpt.isEmpty()) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(Map.of("error", "Founder '" + founderId + "' not found"));
-        }
 
         LocalDate businessDate;
         if (date != null && !date.isBlank()) {
@@ -352,6 +412,31 @@ public class AdminFounderController {
         }
 
         String triggeredBy = (auth != null && auth.getName() != null) ? auth.getName() : "ADMIN_MANUAL";
+
+        Optional<Founder> founderOpt = founderService.findById(founderId);
+        if (founderOpt.isEmpty()) {
+            if (userRepository != null) {
+                Optional<User> userOpt = userRepository.findByUserId(founderId);
+                if (userOpt.isPresent()) {
+                    User user = userOpt.get();
+                    Optional<AnniversaryNotificationLog> result =
+                            greetingService.processIndividualBirthday(user, businessDate, true, triggeredBy);
+                    if (result.isPresent()) {
+                        return ResponseEntity.ok(Map.of(
+                                "message", "Birthday greeting processed successfully",
+                                "notificationLog", result.get()
+                        ));
+                    } else {
+                        return ResponseEntity.badRequest().body(Map.of(
+                                "error", "Individual client is not eligible or greeting was already processed for this birthday year"
+                        ));
+                    }
+                }
+            }
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("error", "Founder or Individual client '" + founderId + "' not found"));
+        }
+
         Optional<AnniversaryNotificationLog> result =
                 greetingService.processFounderBirthday(founderOpt.get(), businessDate, true, triggeredBy);
 
@@ -365,6 +450,19 @@ public class AdminFounderController {
                     "error", "Founder is not eligible or greeting was already processed for this birthday year"
             ));
         }
+    }
+
+    private Founder toPseudoFounder(User user) {
+        Founder f = new Founder();
+        f.setId(user.getUserId());
+        f.setCompanyClientId("INDIVIDUAL");
+        f.setFullName(user.getFullName() != null && !user.getFullName().isBlank() ? user.getFullName() : user.getUserId());
+        f.setDateOfBirth(user.getDateOfBirth());
+        f.setWhatsappNumber(user.getPhone());
+        f.setBirthdayGreetingEnabled(user.isBirthdayGreetingEnabled());
+        f.setWhatsappConsentGiven(user.isWhatsappConsentGiven());
+        f.setActive(user.isActive());
+        return f;
     }
 
     /**

@@ -36,18 +36,20 @@ class BirthdaySchedulerServiceTest {
     @Mock private BirthdayConfig birthdayConfig;
     @Mock private BirthdayGreetingService greetingService;
     @Mock private FounderRepository founderRepository;
+    @Mock private com.mrs.ca.backend.Repositories.UserRepository userRepository;
 
     private static final ZoneId IST = ZoneId.of("Asia/Kolkata");
 
     @BeforeEach
     void setUp() {
         lenient().when(birthdayConfig.getZoneId()).thenReturn(IST);
+        lenient().when(birthdayConfig.isRequireExplicitConsent()).thenReturn(true);
     }
 
     private BirthdaySchedulerService schedulerWith(LocalDate fixedDate) {
         Clock fixedClock = Clock.fixed(
                 fixedDate.atStartOfDay(IST).toInstant(), IST);
-        return new BirthdaySchedulerService(birthdayConfig, greetingService, founderRepository, fixedClock);
+        return new BirthdaySchedulerService(birthdayConfig, greetingService, founderRepository, userRepository, fixedClock);
     }
 
     private Founder founder(String id, int month, int day) {
@@ -233,5 +235,42 @@ class BirthdaySchedulerServiceTest {
         LocalDate expected = LocalDate.of(2026, 10, 17);
         BirthdaySchedulerService scheduler = schedulerWith(expected);
         assertThat(scheduler.getCurrentBusinessDate()).isEqualTo(expected);
+    }
+
+    @Test
+    void executeBirthdayJobForDate_IndividualClient_DispatchesGreeting() {
+        LocalDate today = LocalDate.of(2026, 6, 15);
+        BirthdaySchedulerService scheduler = schedulerWith(today);
+
+        when(founderRepository.findByBirthdayMonthAndBirthdayDayAndActiveTrueAndBirthdayGreetingEnabledTrueAndWhatsappConsentGivenTrue(6, 15))
+                .thenReturn(Collections.emptyList());
+
+        com.mrs.ca.backend.Models.User indUser = new com.mrs.ca.backend.Models.User();
+        indUser.setUserId("ind_101");
+        indUser.setFullName("Rajesh Sharma");
+        indUser.setClientType(com.mrs.ca.backend.Models.ClientType.INDIVIDUAL);
+        indUser.setActive(true);
+        indUser.setBirthdayGreetingEnabled(true);
+        indUser.setWhatsappConsentGiven(true);
+        indUser.setDateOfBirth(LocalDate.of(1985, 6, 15));
+
+        when(userRepository.findByClientTypeAndBirthdayMonthAndBirthdayDayAndActiveTrue(
+                com.mrs.ca.backend.Models.ClientType.INDIVIDUAL, 6, 15))
+                .thenReturn(List.of(indUser));
+
+        AnniversaryNotificationLog log = new AnniversaryNotificationLog();
+        log.setId("log_ind_001");
+        log.setStatus(AnniversaryNotificationStatus.ACCEPTED);
+        log.setNotificationType(AnniversaryNotificationType.FOUNDER_BIRTHDAY);
+
+        when(greetingService.processIndividualBirthday(eq(indUser), eq(today), eq(false), eq("SCHEDULER")))
+                .thenReturn(Optional.of(log));
+
+        BirthdaySchedulerService.ExecutionSummary summary =
+                scheduler.executeBirthdayJobForDate(today, "SCHEDULER");
+
+        assertThat(summary.getFoundersScanned()).isEqualTo(1);
+        assertThat(summary.getDispatched()).isEqualTo(1);
+        assertThat(summary.getSkippedOrFailed()).isEqualTo(0);
     }
 }

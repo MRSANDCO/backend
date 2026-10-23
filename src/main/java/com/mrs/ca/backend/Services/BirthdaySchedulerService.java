@@ -46,6 +46,10 @@ import com.mrs.ca.backend.Repositories.FounderRepository;
  * The scheduler defaults to {@code false} to prevent accidental production sends
  * before the {@code founder_birthday_greeting} template is approved in Meta WhatsApp Manager.</p>
  */
+import com.mrs.ca.backend.Models.ClientType;
+import com.mrs.ca.backend.Models.User;
+import com.mrs.ca.backend.Repositories.UserRepository;
+
 @Service
 public class BirthdaySchedulerService {
 
@@ -54,26 +58,41 @@ public class BirthdaySchedulerService {
     private final BirthdayConfig birthdayConfig;
     private final BirthdayGreetingService greetingService;
     private final FounderRepository founderRepository;
+    private final UserRepository userRepository;
     private final Clock clock;
 
     @Autowired
     public BirthdaySchedulerService(BirthdayConfig birthdayConfig,
                                     BirthdayGreetingService greetingService,
-                                    FounderRepository founderRepository) {
-        this.birthdayConfig = birthdayConfig;
-        this.greetingService = greetingService;
-        this.founderRepository = founderRepository;
-        this.clock = Clock.system(birthdayConfig.getZoneId());
+                                    FounderRepository founderRepository,
+                                    UserRepository userRepository) {
+        this(birthdayConfig, greetingService, founderRepository, userRepository, Clock.system(birthdayConfig.getZoneId()));
     }
 
-    /** Package-private constructor for testing with a custom clock. */
+    public BirthdaySchedulerService(BirthdayConfig birthdayConfig,
+                                    BirthdayGreetingService greetingService,
+                                    FounderRepository founderRepository) {
+        this(birthdayConfig, greetingService, founderRepository, null, Clock.system(birthdayConfig.getZoneId()));
+    }
+
+    /** Package-private constructor for testing with a custom clock without userRepository. */
     BirthdaySchedulerService(BirthdayConfig birthdayConfig,
                              BirthdayGreetingService greetingService,
                              FounderRepository founderRepository,
                              Clock clock) {
+        this(birthdayConfig, greetingService, founderRepository, null, clock);
+    }
+
+    /** Package-private constructor for testing with a custom clock and userRepository. */
+    BirthdaySchedulerService(BirthdayConfig birthdayConfig,
+                             BirthdayGreetingService greetingService,
+                             FounderRepository founderRepository,
+                             UserRepository userRepository,
+                             Clock clock) {
         this.birthdayConfig = birthdayConfig;
         this.greetingService = greetingService;
         this.founderRepository = founderRepository;
+        this.userRepository = userRepository;
         this.clock = clock;
     }
 
@@ -153,9 +172,16 @@ public class BirthdaySchedulerService {
         int queryMonth = monthDay[0];
         int queryDay = monthDay[1];
 
-        List<Founder> candidates = founderRepository
-                .findByBirthdayMonthAndBirthdayDayAndActiveTrueAndBirthdayGreetingEnabledTrueAndWhatsappConsentGivenTrue(
-                        queryMonth, queryDay);
+        List<Founder> candidates;
+        if (birthdayConfig.isRequireExplicitConsent()) {
+            candidates = founderRepository
+                    .findByBirthdayMonthAndBirthdayDayAndActiveTrueAndBirthdayGreetingEnabledTrueAndWhatsappConsentGivenTrue(
+                            queryMonth, queryDay);
+        } else {
+            candidates = founderRepository
+                    .findByBirthdayMonthAndBirthdayDayAndActiveTrueAndBirthdayGreetingEnabledTrue(
+                            queryMonth, queryDay);
+        }
 
         // Also check for leap-day birthdays (Feb 29) being honored on this date
         boolean isFeb28 = businessDate.getMonth() == Month.FEBRUARY && businessDate.getDayOfMonth() == 28;
@@ -164,17 +190,60 @@ public class BirthdaySchedulerService {
 
         if (!isLeapYear && isFeb28 && birthdayConfig.getLeapDayPolicy() == BirthdayConfig.LeapDayPolicy.FEB_28) {
             // Add Feb-29 birthday founders to today's run
-            List<Founder> feb29Founders = founderRepository
-                    .findByBirthdayMonthAndBirthdayDayAndActiveTrueAndBirthdayGreetingEnabledTrueAndWhatsappConsentGivenTrue(2, 29);
+            List<Founder> feb29Founders = birthdayConfig.isRequireExplicitConsent()
+                    ? founderRepository.findByBirthdayMonthAndBirthdayDayAndActiveTrueAndBirthdayGreetingEnabledTrueAndWhatsappConsentGivenTrue(2, 29)
+                    : founderRepository.findByBirthdayMonthAndBirthdayDayAndActiveTrueAndBirthdayGreetingEnabledTrue(2, 29);
             candidates = mergeLists(candidates, feb29Founders);
         } else if (!isLeapYear && isMar1 && birthdayConfig.getLeapDayPolicy() == BirthdayConfig.LeapDayPolicy.MARCH_1) {
-            List<Founder> feb29Founders = founderRepository
-                    .findByBirthdayMonthAndBirthdayDayAndActiveTrueAndBirthdayGreetingEnabledTrueAndWhatsappConsentGivenTrue(2, 29);
+            List<Founder> feb29Founders = birthdayConfig.isRequireExplicitConsent()
+                    ? founderRepository.findByBirthdayMonthAndBirthdayDayAndActiveTrueAndBirthdayGreetingEnabledTrueAndWhatsappConsentGivenTrue(2, 29)
+                    : founderRepository.findByBirthdayMonthAndBirthdayDayAndActiveTrueAndBirthdayGreetingEnabledTrue(2, 29);
             candidates = mergeLists(candidates, feb29Founders);
         }
 
-        summary.foundersScanned = candidates.size();
-        log.info("[BIRTHDAY-SCHEDULER] Found {} candidate founders for {}/{}", candidates.size(), queryMonth, queryDay);
+        // Candidate Individual clients from users collection
+        List<User> individualCandidates = new java.util.ArrayList<>();
+        if (userRepository != null) {
+            List<User> userList = userRepository.findByClientTypeAndBirthdayMonthAndBirthdayDayAndActiveTrue(
+                    ClientType.INDIVIDUAL, queryMonth, queryDay);
+            for (User u : userList) {
+                if (u.isBirthdayGreetingEnabled()) {
+                    if (!birthdayConfig.isRequireExplicitConsent() || u.isWhatsappConsentGiven()) {
+                        individualCandidates.add(u);
+                    }
+                }
+            }
+
+            if (!isLeapYear && isFeb28 && birthdayConfig.getLeapDayPolicy() == BirthdayConfig.LeapDayPolicy.FEB_28) {
+                List<User> feb29Users = userRepository.findByClientTypeAndBirthdayMonthAndBirthdayDayAndActiveTrue(
+                        ClientType.INDIVIDUAL, 2, 29);
+                for (User u : feb29Users) {
+                    if (u.isBirthdayGreetingEnabled()) {
+                        if (!birthdayConfig.isRequireExplicitConsent() || u.isWhatsappConsentGiven()) {
+                            if (individualCandidates.stream().noneMatch(m -> m.getUserId().equals(u.getUserId()))) {
+                                individualCandidates.add(u);
+                            }
+                        }
+                    }
+                }
+            } else if (!isLeapYear && isMar1 && birthdayConfig.getLeapDayPolicy() == BirthdayConfig.LeapDayPolicy.MARCH_1) {
+                List<User> feb29Users = userRepository.findByClientTypeAndBirthdayMonthAndBirthdayDayAndActiveTrue(
+                        ClientType.INDIVIDUAL, 2, 29);
+                for (User u : feb29Users) {
+                    if (u.isBirthdayGreetingEnabled()) {
+                        if (!birthdayConfig.isRequireExplicitConsent() || u.isWhatsappConsentGiven()) {
+                            if (individualCandidates.stream().noneMatch(m -> m.getUserId().equals(u.getUserId()))) {
+                                individualCandidates.add(u);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        summary.foundersScanned = candidates.size() + individualCandidates.size();
+        log.info("[BIRTHDAY-SCHEDULER] Found {} candidate founders and {} individual clients for {}/{}",
+                candidates.size(), individualCandidates.size(), queryMonth, queryDay);
 
         for (Founder founder : candidates) {
             summary.eligible++;
@@ -190,6 +259,23 @@ public class BirthdaySchedulerService {
                 summary.skippedOrFailed++;
                 log.error("[BIRTHDAY-SCHEDULER] Error processing founder '{}': {}",
                         founder.getId(), e.getMessage(), e);
+            }
+        }
+
+        for (User client : individualCandidates) {
+            summary.eligible++;
+            try {
+                Optional<AnniversaryNotificationLog> result =
+                        greetingService.processIndividualBirthday(client, businessDate, false, triggeredBy);
+                if (result.isPresent()) {
+                    summary.dispatched++;
+                } else {
+                    summary.skippedOrFailed++;
+                }
+            } catch (Exception e) {
+                summary.skippedOrFailed++;
+                log.error("[BIRTHDAY-SCHEDULER] Error processing individual client '{}': {}",
+                        client.getUserId(), e.getMessage(), e);
             }
         }
 

@@ -4,12 +4,16 @@ import com.mrs.ca.backend.Config.BirthdayConfig;
 import com.mrs.ca.backend.Models.AnniversaryNotificationLog;
 import com.mrs.ca.backend.Models.AnniversaryNotificationStatus;
 import com.mrs.ca.backend.Models.AnniversaryNotificationType;
+import com.mrs.ca.backend.Models.ClientType;
 import com.mrs.ca.backend.Models.Founder;
+import com.mrs.ca.backend.Models.User;
 import com.mrs.ca.backend.Repositories.AnniversaryNotificationLogRepository;
 import com.mrs.ca.backend.Repositories.FounderRepository;
+import com.mrs.ca.backend.Repositories.UserRepository;
 import com.mrs.ca.backend.dto.WhatsAppSendResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.mongodb.core.FindAndModifyOptions;
 import org.springframework.data.mongodb.core.MongoTemplate;
@@ -25,11 +29,11 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Core orchestration service for founder birthday greetings.
+ * Core orchestration service for founder and individual client birthday greetings.
  *
  * <h3>Deduplication strategy</h3>
  * <p>Birthday notifications reuse the {@code anniversary_notification_logs} collection.
- * The deduplication key is {@code (clientId=founderId, anniversaryYear=currentYear,
+ * The deduplication key is {@code (clientId=founderId/userId, anniversaryYear=currentYear,
  * notificationType=FOUNDER_BIRTHDAY)}. This is disjoint from the company anniversary key
  * which uses {@code COMPANY_FORMATION_ANNIVERSARY}, so there is no conflict.</p>
  *
@@ -39,7 +43,7 @@ import java.util.UUID;
  * between log insertion and the unique index enforcement.</p>
  *
  * <h3>Leap-day policy</h3>
- * <p>Founders born on Feb 29 are greeted on Feb 28 in non-leap years (configurable to Mar 1).
+ * <p>Recipients born on Feb 29 are greeted on Feb 28 in non-leap years (configurable to Mar 1).
  * This mirrors the existing {@link AnniversaryMatchingService} leap-day logic.</p>
  */
 @Service
@@ -53,6 +57,7 @@ public class BirthdayGreetingService {
     private final FounderRepository founderRepository;
     private final AnniversaryEligibilityService phoneValidator;
     private final MongoTemplate mongoTemplate;
+    private final UserRepository userRepository;
 
     /**
      * Unique identifier for this JVM instance; used in the processing-worker-id lease field
@@ -60,18 +65,30 @@ public class BirthdayGreetingService {
      */
     private final String workerId = UUID.randomUUID().toString();
 
+    @Autowired
     public BirthdayGreetingService(BirthdayConfig birthdayConfig,
                                    WhatsAppService whatsAppService,
                                    AnniversaryNotificationLogRepository logRepository,
                                    FounderRepository founderRepository,
                                    AnniversaryEligibilityService phoneValidator,
-                                   MongoTemplate mongoTemplate) {
+                                   MongoTemplate mongoTemplate,
+                                   UserRepository userRepository) {
         this.birthdayConfig = birthdayConfig;
         this.whatsAppService = whatsAppService;
         this.logRepository = logRepository;
         this.founderRepository = founderRepository;
         this.phoneValidator = phoneValidator;
         this.mongoTemplate = mongoTemplate;
+        this.userRepository = userRepository;
+    }
+
+    public BirthdayGreetingService(BirthdayConfig birthdayConfig,
+                                   WhatsAppService whatsAppService,
+                                   AnniversaryNotificationLogRepository logRepository,
+                                   FounderRepository founderRepository,
+                                   AnniversaryEligibilityService phoneValidator,
+                                   MongoTemplate mongoTemplate) {
+        this(birthdayConfig, whatsAppService, logRepository, founderRepository, phoneValidator, mongoTemplate, null);
     }
 
     // ─── Public API ──────────────────────────────────────────────────────────────
@@ -96,9 +113,15 @@ public class BirthdayGreetingService {
         String founderId = founder.getId();
 
         // --- 1. Quick eligibility re-check (scheduler already filtered, but guard in service too) ---
-        if (!founder.isActive() || !founder.isBirthdayGreetingEnabled() || !founder.isWhatsappConsentGiven()) {
-            log.info("[BIRTHDAY-SERVICE] Skipping founder '{}' — active={}, greetingEnabled={}, consent={}",
-                    founderId, founder.isActive(), founder.isBirthdayGreetingEnabled(), founder.isWhatsappConsentGiven());
+        if (!founder.isActive() || !founder.isBirthdayGreetingEnabled()) {
+            log.info("[BIRTHDAY-SERVICE] Skipping founder '{}' — active={}, greetingEnabled={}",
+                    founderId, founder.isActive(), founder.isBirthdayGreetingEnabled());
+            return Optional.empty();
+        }
+
+        if (birthdayConfig.isRequireExplicitConsent() && !founder.isWhatsappConsentGiven()) {
+            log.info("[BIRTHDAY-SERVICE] Skipping founder '{}' — explicit WhatsApp consent required by policy but not given.",
+                    founderId);
             return Optional.empty();
         }
 
@@ -147,6 +170,91 @@ public class BirthdayGreetingService {
     }
 
     /**
+     * Process a birthday greeting for a single eligible individual client.
+     *
+     * @param client       the individual client record (must be active, greetingEnabled, clientType == INDIVIDUAL)
+     * @param businessDate the date being processed
+     * @param manual       true when triggered by an admin, false for scheduled runs
+     * @param triggeredBy  actor string for audit log ("SCHEDULER", "ADMIN_TRIGGER", etc.)
+     * @return the persisted notification log if a dispatch was attempted, empty otherwise
+     */
+    public Optional<AnniversaryNotificationLog> processIndividualBirthday(
+            User client, LocalDate businessDate, boolean manual, String triggeredBy) {
+
+        if (client == null || businessDate == null) {
+            return Optional.empty();
+        }
+
+        if (client.getClientType() != ClientType.INDIVIDUAL) {
+            log.info("[BIRTHDAY-SERVICE] Skipping user '{}' — clientType is not INDIVIDUAL", client.getUserId());
+            return Optional.empty();
+        }
+
+        int birthdayYear = businessDate.getYear();
+        String userId = client.getUserId();
+
+        // 1. Eligibility check
+        if (!client.isActive() || !client.isBirthdayGreetingEnabled()) {
+            log.info("[BIRTHDAY-SERVICE] Skipping individual '{}' — active={}, greetingEnabled={}",
+                    userId, client.isActive(), client.isBirthdayGreetingEnabled());
+            return Optional.empty();
+        }
+
+        if (birthdayConfig.isRequireExplicitConsent() && !client.isWhatsappConsentGiven()) {
+            log.info("[BIRTHDAY-SERVICE] Skipping individual '{}' — WhatsApp consent required by policy but not given.", userId);
+            return Optional.empty();
+        }
+
+        String phone = client.getPhone();
+        if (phone == null || phone.isBlank()) {
+            log.warn("[BIRTHDAY-SERVICE] Skipping individual '{}' — phone is missing.", userId);
+            return Optional.empty();
+        }
+
+        String normalizedPhone = phoneValidator.normalizeAndValidatePhone(phone);
+        if (normalizedPhone == null) {
+            log.warn("[BIRTHDAY-SERVICE] Skipping individual '{}' — phone '{}' is not a valid international number.",
+                    userId, phone);
+            return Optional.empty();
+        }
+
+        // 2. Create-or-fetch notification log (database-level idempotency)
+        AnniversaryNotificationLog logRecord = getOrCreateIndividualBirthdayLog(
+                client, businessDate, normalizedPhone, manual, triggeredBy);
+        if (logRecord == null) {
+            log.info("[BIRTHDAY-SERVICE] Birthday log already exists/accepted for individual '{}' year {}.",
+                    userId, birthdayYear);
+            return Optional.empty();
+        }
+
+        // 3. Atomic lease claim
+        AnniversaryNotificationLog claimedLog = claimForProcessing(logRecord.getId());
+        if (claimedLog == null) {
+            log.info("[BIRTHDAY-SERVICE] Concurrent worker claimed individual '{}' year {}. Skipping.",
+                    userId, birthdayYear);
+            return Optional.empty();
+        }
+
+        // 4. Dispatch template to Meta WhatsApp Cloud API
+        String templateName = birthdayConfig.getTemplateName();
+        String templateLang = birthdayConfig.getTemplateLanguage();
+        String recipientName = (client.getFullName() != null && !client.getFullName().isBlank())
+                ? client.getFullName().trim() : "Valued Client";
+
+        List<String> bodyParams = List.of(recipientName);
+
+        log.info("[BIRTHDAY-SERVICE] Dispatching birthday template '{}' ({}) to individual '{}' at '{}'",
+                templateName, templateLang, recipientName, normalizedPhone);
+
+        WhatsAppSendResult sendResult = whatsAppService.sendTemplateMessage(
+                normalizedPhone, templateName, templateLang, bodyParams);
+
+        // 5. Persist outcome
+        AnniversaryNotificationLog finalLog = updateOutcome(claimedLog.getId(), sendResult, birthdayYear);
+        return Optional.ofNullable(finalLog);
+    }
+
+    /**
      * Retry any birthday notifications in RETRY_PENDING status whose backoff window has elapsed.
      *
      * @return number of records successfully retried
@@ -169,37 +277,79 @@ public class BirthdayGreetingService {
         for (AnniversaryNotificationLog item : retryList) {
             try {
                 Optional<Founder> founderOpt = founderRepository.findById(item.getClientId());
-                if (founderOpt.isEmpty()) {
+                if (founderOpt.isPresent()) {
+                    Founder founder = founderOpt.get();
+                    if (!founder.isActive() || !founder.isBirthdayGreetingEnabled()) {
+                        markPermanentFailure(item.getId(), "INELIGIBLE_ON_RETRY",
+                                "Founder inactive or greeting disabled before retry");
+                        continue;
+                    }
+                    if (birthdayConfig.isRequireExplicitConsent() && !founder.isWhatsappConsentGiven()) {
+                        markPermanentFailure(item.getId(), "CONSENT_WITHDRAWN",
+                                "Consent withdrawn before retry");
+                        continue;
+                    }
+
+                    String normalizedPhone = phoneValidator.normalizeAndValidatePhone(founder.getWhatsappNumber());
+                    if (normalizedPhone == null) {
+                        markPermanentFailure(item.getId(), "INVALID_PHONE", "Phone number no longer valid for retry");
+                        continue;
+                    }
+
+                    AnniversaryNotificationLog claimed = claimForProcessing(item.getId());
+                    if (claimed == null) continue;
+
+                    WhatsAppSendResult result = whatsAppService.sendTemplateMessage(
+                            normalizedPhone,
+                            item.getTemplateName(),
+                            item.getTemplateLanguage(),
+                            List.of(resolveFounderName(founder))
+                    );
+
+                    updateOutcome(claimed.getId(), result, item.getAnniversaryYear());
+                    processed++;
+                } else if (userRepository != null) {
+                    Optional<User> userOpt = userRepository.findByUserId(item.getClientId());
+                    if (userOpt.isPresent()) {
+                        User user = userOpt.get();
+                        if (!user.isActive() || !user.isBirthdayGreetingEnabled()) {
+                            markPermanentFailure(item.getId(), "INELIGIBLE_ON_RETRY",
+                                    "User inactive or birthday greeting disabled before retry");
+                            continue;
+                        }
+                        if (birthdayConfig.isRequireExplicitConsent() && !user.isWhatsappConsentGiven()) {
+                            markPermanentFailure(item.getId(), "CONSENT_WITHDRAWN",
+                                    "Consent withdrawn before retry");
+                            continue;
+                        }
+
+                        String normalizedPhone = phoneValidator.normalizeAndValidatePhone(user.getPhone());
+                        if (normalizedPhone == null) {
+                            markPermanentFailure(item.getId(), "INVALID_PHONE", "Phone number no longer valid for retry");
+                            continue;
+                        }
+
+                        AnniversaryNotificationLog claimed = claimForProcessing(item.getId());
+                        if (claimed == null) continue;
+
+                        String name = user.getFullName() != null && !user.getFullName().isBlank()
+                                ? user.getFullName().trim() : "Valued Client";
+
+                        WhatsAppSendResult result = whatsAppService.sendTemplateMessage(
+                                normalizedPhone,
+                                item.getTemplateName(),
+                                item.getTemplateLanguage(),
+                                List.of(name)
+                        );
+
+                        updateOutcome(claimed.getId(), result, item.getAnniversaryYear());
+                        processed++;
+                    } else {
+                        markPermanentFailure(item.getId(), "RECIPIENT_DELETED", "Recipient record no longer exists");
+                    }
+                } else {
                     markPermanentFailure(item.getId(), "FOUNDER_DELETED", "Founder record no longer exists");
-                    continue;
                 }
-
-                Founder founder = founderOpt.get();
-                if (!founder.isActive() || !founder.isBirthdayGreetingEnabled() || !founder.isWhatsappConsentGiven()) {
-                    markPermanentFailure(item.getId(), "INELIGIBLE_ON_RETRY",
-                            "Founder inactive, greeting disabled, or consent withdrawn before retry");
-                    continue;
-                }
-
-                String normalizedPhone = phoneValidator.normalizeAndValidatePhone(founder.getWhatsappNumber());
-                if (normalizedPhone == null) {
-                    markPermanentFailure(item.getId(), "INVALID_PHONE", "Phone number no longer valid for retry");
-                    continue;
-                }
-
-                AnniversaryNotificationLog claimed = claimForProcessing(item.getId());
-                if (claimed == null) continue;
-
-                WhatsAppSendResult result = whatsAppService.sendTemplateMessage(
-                        normalizedPhone,
-                        item.getTemplateName(),
-                        item.getTemplateLanguage(),
-                        List.of(resolveFounderName(founder))
-                );
-
-                updateOutcome(claimed.getId(), result, item.getAnniversaryYear());
-                processed++;
-
             } catch (Exception e) {
                 log.error("[BIRTHDAY-RETRY] Error retrying birthday notification ID {}: {}", item.getId(), e.getMessage(), e);
             }
@@ -261,6 +411,63 @@ public class BirthdayGreetingService {
         } catch (DuplicateKeyException e) {
             log.warn("[BIRTHDAY-SERVICE] DuplicateKeyException for founder '{}' year {}. Concurrent instance beat us.",
                     founderId, birthdayYear);
+            return null;
+        }
+    }
+
+    /**
+     * Creates or fetches the birthday notification log for an individual client (userId, year) pair.
+     * The compound unique index on (clientId, anniversaryYear, notificationType) prevents duplicates.
+     */
+    private AnniversaryNotificationLog getOrCreateIndividualBirthdayLog(
+            User client, LocalDate businessDate, String normalizedPhone,
+            boolean manual, String triggeredBy) {
+
+        int birthdayYear = businessDate.getYear();
+        String userId = client.getUserId();
+
+        Optional<AnniversaryNotificationLog> existing = logRepository
+                .findByClientIdAndAnniversaryYearAndNotificationType(
+                        userId, birthdayYear, AnniversaryNotificationType.FOUNDER_BIRTHDAY);
+
+        if (existing.isPresent()) {
+            AnniversaryNotificationLog current = existing.get();
+            if (current.getStatus() == AnniversaryNotificationStatus.ACCEPTED ||
+                    current.getStatus() == AnniversaryNotificationStatus.SENT ||
+                    current.getStatus() == AnniversaryNotificationStatus.DELIVERED ||
+                    current.getStatus() == AnniversaryNotificationStatus.READ ||
+                    current.getStatus() == AnniversaryNotificationStatus.AMBIGUOUS) {
+                return null;
+            }
+            return current;
+        }
+
+        String recipientName = (client.getFullName() != null && !client.getFullName().isBlank())
+                ? client.getFullName().trim() : "Valued Client";
+
+        AnniversaryNotificationLog newLog = new AnniversaryNotificationLog(
+                userId,                           // clientId = user ID
+                userId,                           // userDocId = user ID
+                recipientName,                    // companyName field reused for recipient name
+                recipientName,                    // contactPersonName
+                normalizedPhone,
+                birthdayYear,
+                businessDate
+        );
+        newLog.setNotificationType(AnniversaryNotificationType.FOUNDER_BIRTHDAY);
+        newLog.setTemplateName(birthdayConfig.getTemplateName());
+        newLog.setTemplateLanguage(birthdayConfig.getTemplateLanguage());
+        newLog.setMaxAttempts(birthdayConfig.getMaxRetryAttempts());
+        newLog.setManualTrigger(manual);
+        newLog.setTriggeredBy(triggeredBy != null ? triggeredBy : "SCHEDULER");
+        newLog.setCreatedAt(LocalDateTime.now());
+        newLog.setUpdatedAt(LocalDateTime.now());
+
+        try {
+            return logRepository.save(newLog);
+        } catch (DuplicateKeyException e) {
+            log.warn("[BIRTHDAY-SERVICE] DuplicateKeyException for individual '{}' year {}. Concurrent instance beat us.",
+                    userId, birthdayYear);
             return null;
         }
     }

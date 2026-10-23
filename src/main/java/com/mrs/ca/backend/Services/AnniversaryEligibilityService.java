@@ -105,7 +105,9 @@ public class AnniversaryEligibilityService {
             return EligibilityResult.ineligible("AUTOMATION_DISABLED");
         }
 
-        if (!client.isWhatsappConsentGiven()) {
+        // Centralized messaging eligibility check:
+        // Only require explicit per-client consent flag if configured by organizational policy.
+        if (anniversaryConfig.isRequireExplicitConsent() && !client.isWhatsappConsentGiven()) {
             return EligibilityResult.ineligible("CONSENT_MISSING_OR_WITHDRAWN");
         }
 

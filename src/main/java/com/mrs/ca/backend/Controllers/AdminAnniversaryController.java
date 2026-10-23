@@ -182,6 +182,9 @@ public class AdminAnniversaryController {
         if (request.getFormationDate() != null) {
             user.setFormationDate(request.getFormationDate());
         }
+        if (request.getDateOfBirth() != null) {
+            user.setDateOfBirth(request.getDateOfBirth());
+        }
         if (request.getCompanyName() != null) {
             user.setCompanyName(request.getCompanyName().trim());
         }
@@ -193,6 +196,9 @@ public class AdminAnniversaryController {
                 return ResponseEntity.badRequest().body(Map.of("error", "Anniversary automation cannot be enabled for INDIVIDUAL clients"));
             }
             user.setAnniversaryAutomationEnabled(request.getAnniversaryAutomationEnabled());
+        }
+        if (request.getBirthdayGreetingEnabled() != null) {
+            user.setBirthdayGreetingEnabled(request.getBirthdayGreetingEnabled());
         }
         if (request.getWhatsappConsentGiven() != null) {
             user.setWhatsappConsentGiven(request.getWhatsappConsentGiven());
@@ -306,19 +312,46 @@ public class AdminAnniversaryController {
         ));
     }
 
+    /**
+     * Retrieve all clients with anniversary, birthday, and classification status.
+     * GET /api/admin/anniversary/clients
+     */
+    @GetMapping("/clients")
+    public ResponseEntity<List<AnniversaryClientDto>> getAllClients() {
+        LocalDate today = matchingService.getCurrentBusinessDate();
+        List<User> all = userRepository.findAll(Sort.by(Sort.Direction.DESC, "createdAt"));
+        List<AnniversaryClientDto> dtos = all.stream()
+                .map(u -> mapToDto(u, today))
+                .toList();
+        return ResponseEntity.ok(dtos);
+    }
+
+    /**
+     * Retrieve clients whose client type is unresolved/unclassified (alias for /unverified).
+     * GET /api/admin/anniversary/unclassified
+     */
+    @GetMapping("/unclassified")
+    public ResponseEntity<List<AnniversaryClientDto>> getUnclassifiedClients() {
+        return getUnverifiedClients();
+    }
+
     private AnniversaryClientDto mapToDto(User user, LocalDate referenceDate) {
         AnniversaryClientDto dto = new AnniversaryClientDto();
         dto.setUserId(user.getUserId());
         dto.setFullName(user.getFullName());
         dto.setClientType(user.getClientType());
+        dto.setClassificationRequired(user.getClientType() == null);
         dto.setCompanyName(user.getEffectiveCompanyName());
         dto.setContactPersonName(user.getEffectiveContactPersonName());
         dto.setPhone(user.getPhone());
         dto.setFormationDate(user.getFormationDate());
+        dto.setDateOfBirth(user.getDateOfBirth());
         dto.setAnniversaryAutomationEnabled(user.isAnniversaryAutomationEnabled());
+        dto.setBirthdayGreetingEnabled(user.isBirthdayGreetingEnabled());
         dto.setWhatsappConsentGiven(user.isWhatsappConsentGiven());
         dto.setYearsCompleted(matchingService.calculateYearsCompleted(user.getFormationDate(), referenceDate));
-        dto.setAnniversaryToday(matchingService.isAnniversaryToday(user.getFormationDate(), referenceDate));
+        dto.setAnniversaryToday(user.getClientType() == ClientType.COMPANY && matchingService.isAnniversaryToday(user.getFormationDate(), referenceDate));
+        dto.setBirthdayToday(user.getDateOfBirth() != null && matchingService.isAnniversaryToday(user.getDateOfBirth(), referenceDate));
 
         Optional<AnniversaryNotificationLog> logOpt = logRepository.findByClientIdAndAnniversaryYearAndNotificationType(
                 user.getUserId(), referenceDate.getYear(), AnniversaryNotificationType.COMPANY_FORMATION_ANNIVERSARY);

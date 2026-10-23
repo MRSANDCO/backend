@@ -63,6 +63,7 @@ class AdminFounderControllerTest {
 
     @BeforeEach
     void setUp() {
+        lenient().when(birthdayConfig.isRequireExplicitConsent()).thenReturn(true);
         controller = new AdminFounderController(
                 founderService,
                 founderRepository,

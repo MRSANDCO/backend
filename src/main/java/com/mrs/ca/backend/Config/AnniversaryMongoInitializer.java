@@ -82,7 +82,26 @@ public class AnniversaryMongoInitializer {
                             .named("user_company_anniversary_lookup_idx")
             );
 
-            log.info("[ANNIVERSARY-INIT] All anniversary and client category MongoDB indexes successfully verified and ensured.");
+            // 7. Sparse index on User date_of_birth for individual clients
+            mongoTemplate.indexOps(User.class).ensureIndex(
+                    new Index()
+                            .on("date_of_birth", Sort.Direction.ASC)
+                            .sparse()
+                            .named("user_date_of_birth_idx")
+            );
+
+            // 8. Compound sparse index on (client_type, birthday_month, birthday_day, active) for birthday scheduler
+            mongoTemplate.indexOps(User.class).ensureIndex(
+                    new Index()
+                            .on("client_type", Sort.Direction.ASC)
+                            .on("birthday_month", Sort.Direction.ASC)
+                            .on("birthday_day", Sort.Direction.ASC)
+                            .on("active", Sort.Direction.ASC)
+                            .sparse()
+                            .named("user_individual_birthday_lookup_idx")
+            );
+
+            log.info("[ANNIVERSARY-INIT] All anniversary, birthday, and client category MongoDB indexes successfully verified and ensured.");
         } catch (Exception e) {
             log.warn("[ANNIVERSARY-INIT] Warning while ensuring anniversary indexes: {}", e.getMessage());
         }

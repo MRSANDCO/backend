@@ -167,6 +167,44 @@ class AdminControllerTest {
     }
 
     @Test
+    @DisplayName("POST /api/admin/users — 201 on INDIVIDUAL creation with dateOfBirth")
+    void createUser_individualWithDateOfBirth() throws Exception {
+        User user = new User("ind_dob1", "pass", "Individual John", "john@ind.com", "admin");
+        user.setId("ind_dob_id");
+        user.setPhone("9876543211");
+        user.setClientType(ClientType.INDIVIDUAL);
+        user.setDateOfBirth(java.time.LocalDate.of(1990, 7, 20));
+        user.setBirthdayGreetingEnabled(true);
+
+        when(adminService.createUser(eq("ind_dob1"), eq("pass"), eq("Individual John"),
+                eq("john@ind.com"), eq("9876543211"), eq(ClientType.INDIVIDUAL),
+                isNull(), isNull(), isNull(),
+                eq(java.time.LocalDate.of(1990, 7, 20)),
+                isNull(), eq(true), isNull()))
+                .thenReturn(user);
+
+        mockMvc.perform(post("/api/admin/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "userId": "ind_dob1",
+                                    "password": "pass",
+                                    "fullName": "Individual John",
+                                    "email": "john@ind.com",
+                                    "phone": "9876543211",
+                                    "clientType": "INDIVIDUAL",
+                                    "dateOfBirth": "1990-07-20",
+                                    "birthdayGreetingEnabled": true
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.userId").value("ind_dob1"))
+                .andExpect(jsonPath("$.clientType").value("INDIVIDUAL"))
+                .andExpect(jsonPath("$.dateOfBirth").value("1990-07-20"))
+                .andExpect(jsonPath("$.birthdayGreetingEnabled").value(true));
+    }
+
+    @Test
     @DisplayName("POST /api/admin/users — 400 when invalid clientType provided")
     void createUser_invalidClientType() throws Exception {
         mockMvc.perform(post("/api/admin/users")
