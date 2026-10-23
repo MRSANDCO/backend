@@ -290,4 +290,52 @@ class AdminAnniversaryControllerTest {
         assertThat(client.getBirthdayDay()).isEqualTo(20);
         assertThat(client.isBirthdayGreetingEnabled()).isTrue();
     }
+
+    @Test
+    void testToggleAnniversaryAutomation_success() {
+        User companyClient = createClient("comp1", "Company One", LocalDate.of(2018, 10, 10));
+        companyClient.setAnniversaryAutomationEnabled(false);
+        when(userRepository.findByUserId("comp1")).thenReturn(Optional.of(companyClient));
+
+        ResponseEntity<?> response = controller.toggleAnniversaryAutomation("comp1", Map.of("enabled", true), null);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(companyClient.isAnniversaryAutomationEnabled()).isTrue();
+        verify(userRepository).save(companyClient);
+    }
+
+    @Test
+    void testToggleAnniversaryAutomation_rejectIndividual() {
+        User individualClient = createClient("ind1", null, null);
+        individualClient.setClientType(ClientType.INDIVIDUAL);
+        individualClient.setAnniversaryAutomationEnabled(false);
+        when(userRepository.findByUserId("ind1")).thenReturn(Optional.of(individualClient));
+
+        ResponseEntity<?> response = controller.toggleAnniversaryAutomation("ind1", Map.of("enabled", true), null);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(individualClient.isAnniversaryAutomationEnabled()).isFalse();
+    }
+
+    @Test
+    void testPreviewAnniversaries_success() {
+        when(schedulerService.previewAnniversaries(today)).thenReturn(List.of(
+                Map.of("userId", "comp1", "companyName", "Company One", "eligibleForAutoSend", true)
+        ));
+
+        ResponseEntity<?> response = controller.previewAnniversaries(today.toString());
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isInstanceOf(List.class);
+        List<?> body = (List<?>) response.getBody();
+        assertThat(body).hasSize(1);
+    }
+
+    @Test
+    void testGetSchedulerStatus_success() {
+        when(schedulerService.getLastExecutionStatus()).thenReturn("COMPLETED_SUCCESSFULLY");
+        when(schedulerService.getRecentErrors()).thenReturn(List.of());
+
+        ResponseEntity<?> response = controller.getSchedulerStatus();
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<?, ?> body = (Map<?, ?>) response.getBody();
+        assertThat(body.get("lastExecutionStatus")).isEqualTo("COMPLETED_SUCCESSFULLY");
+    }
 }

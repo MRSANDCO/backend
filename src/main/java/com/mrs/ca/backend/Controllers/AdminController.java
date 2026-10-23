@@ -8,6 +8,8 @@ import com.mrs.ca.backend.Models.User;
 import com.mrs.ca.backend.Services.AdminService;
 import com.mrs.ca.backend.Services.QueryService;
 import com.mrs.ca.backend.Services.WhatsAppService;
+import com.mrs.ca.backend.Services.FounderService;
+import com.mrs.ca.backend.dto.CompanyDropdownDto;
 import com.mrs.ca.backend.dto.QueryConversationDto;
 import com.mrs.ca.backend.dto.QueryResponseRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -45,11 +47,22 @@ public class AdminController {
     private final AdminService adminService;
     private final QueryService queryService;
     private final WhatsAppService whatsAppService;
+    private final FounderService founderService;
 
-    public AdminController(AdminService adminService, QueryService queryService, WhatsAppService whatsAppService) {
+    public AdminController(AdminService adminService, QueryService queryService, WhatsAppService whatsAppService, FounderService founderService) {
         this.adminService = adminService;
         this.queryService = queryService;
         this.whatsAppService = whatsAppService;
+        this.founderService = founderService;
+    }
+
+    /**
+     * Get eligible company clients for founder dropdowns.
+     * Accessible at both /api/admin/companies and /api/admin/companies/eligible.
+     */
+    @GetMapping({"/companies", "/companies/eligible"})
+    public ResponseEntity<List<CompanyDropdownDto>> getEligibleCompanies() {
+        return ResponseEntity.ok(founderService.getEligibleCompanies());
     }
 
     // ===================== User Management =====================

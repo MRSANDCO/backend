@@ -13,8 +13,10 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.Month;
 import java.time.Year;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -60,6 +62,10 @@ public class BirthdaySchedulerService {
     private final FounderRepository founderRepository;
     private final UserRepository userRepository;
     private final Clock clock;
+    private volatile ExecutionSummary lastExecutionSummary;
+    private volatile LocalDateTime lastExecutionTime;
+    private volatile String lastExecutionStatus = "NEVER_RUN";
+    private final List<String> recentErrors = new java.util.concurrent.CopyOnWriteArrayList<>();
 
     @Autowired
     public BirthdaySchedulerService(BirthdayConfig birthdayConfig,
@@ -257,6 +263,7 @@ public class BirthdaySchedulerService {
                 }
             } catch (Exception e) {
                 summary.skippedOrFailed++;
+                recordError("Founder " + founder.getId() + ": " + e.getMessage());
                 log.error("[BIRTHDAY-SCHEDULER] Error processing founder '{}': {}",
                         founder.getId(), e.getMessage(), e);
             }
@@ -274,12 +281,16 @@ public class BirthdaySchedulerService {
                 }
             } catch (Exception e) {
                 summary.skippedOrFailed++;
+                recordError("Individual " + client.getUserId() + ": " + e.getMessage());
                 log.error("[BIRTHDAY-SCHEDULER] Error processing individual client '{}': {}",
                         client.getUserId(), e.getMessage(), e);
             }
         }
 
         summary.durationMillis = Duration.between(start, Instant.now()).toMillis();
+        this.lastExecutionSummary = summary;
+        this.lastExecutionTime = LocalDateTime.now();
+        this.lastExecutionStatus = summary.getSkippedOrFailed() > 0 ? "COMPLETED_WITH_SKIPPED_OR_ERRORS" : "COMPLETED_SUCCESSFULLY";
         log.info("[BIRTHDAY-SCHEDULER] Completed for {}. Scanned: {}, Eligible: {}, Dispatched: {}, Skipped/Failed: {}, Duration: {} ms",
                 businessDate, summary.foundersScanned, summary.eligible,
                 summary.dispatched, summary.skippedOrFailed, summary.durationMillis);
@@ -292,6 +303,84 @@ public class BirthdaySchedulerService {
      */
     public LocalDate getCurrentBusinessDate() {
         return LocalDate.now(clock.withZone(birthdayConfig.getZoneId()));
+    }
+
+    private void recordError(String errorMsg) {
+        if (recentErrors.size() >= 20) {
+            recentErrors.remove(0);
+        }
+        recentErrors.add(LocalDateTime.now() + " - " + errorMsg);
+    }
+
+    public ExecutionSummary getLastExecutionSummary() {
+        return lastExecutionSummary;
+    }
+
+    public LocalDateTime getLastExecutionTime() {
+        return lastExecutionTime;
+    }
+
+    public String getLastExecutionStatus() {
+        return lastExecutionStatus;
+    }
+
+    public List<String> getRecentErrors() {
+        return new ArrayList<>(recentErrors);
+    }
+
+    /**
+     * Preview founders and individual clients celebrating birthdays on the given business date
+     * without sending any WhatsApp messages or creating log records.
+     */
+    public List<java.util.Map<String, Object>> previewBirthdayGreetings(LocalDate businessDate) {
+        int[] monthDay = resolveMatchingMonthDay(businessDate);
+        int queryMonth = monthDay[0];
+        int queryDay = monthDay[1];
+
+        List<Founder> founders = founderRepository.findByBirthdayMonthAndBirthdayDayAndActiveTrue(queryMonth, queryDay);
+        List<java.util.Map<String, Object>> result = new ArrayList<>();
+
+        for (Founder f : founders) {
+            java.util.Map<String, Object> item = new java.util.LinkedHashMap<>();
+            item.put("recipientType", "FOUNDER");
+            item.put("recipientId", f.getId());
+            item.put("companyClientId", f.getCompanyClientId());
+            item.put("fullName", f.getFullName());
+            item.put("whatsappNumber", f.getWhatsappNumber());
+            item.put("dateOfBirth", f.getDateOfBirth());
+            item.put("birthdayGreetingEnabled", f.isBirthdayGreetingEnabled());
+            item.put("whatsappConsentGiven", f.isWhatsappConsentGiven());
+
+            boolean eligible = f.isActive() && f.isBirthdayGreetingEnabled() &&
+                    (!birthdayConfig.isRequireExplicitConsent() || f.isWhatsappConsentGiven());
+            item.put("eligibleForAutoSend", eligible);
+            item.put("eligibilityReason", eligible ? "ELIGIBLE" : "INELIGIBLE_PREFERENCE_OR_CONSENT");
+            result.add(item);
+        }
+
+        if (userRepository != null) {
+            List<User> individuals = userRepository.findByClientTypeAndBirthdayMonthAndBirthdayDayAndActiveTrue(
+                    ClientType.INDIVIDUAL, queryMonth, queryDay);
+            for (User u : individuals) {
+                java.util.Map<String, Object> item = new java.util.LinkedHashMap<>();
+                item.put("recipientType", "INDIVIDUAL_CLIENT");
+                item.put("recipientId", u.getUserId());
+                item.put("companyClientId", "INDIVIDUAL");
+                item.put("fullName", u.getFullName());
+                item.put("whatsappNumber", u.getPhone());
+                item.put("dateOfBirth", u.getDateOfBirth());
+                item.put("birthdayGreetingEnabled", u.isBirthdayGreetingEnabled());
+                item.put("whatsappConsentGiven", u.isWhatsappConsentGiven());
+
+                boolean eligible = u.isActive() && u.isBirthdayGreetingEnabled() &&
+                        (!birthdayConfig.isRequireExplicitConsent() || u.isWhatsappConsentGiven());
+                item.put("eligibleForAutoSend", eligible);
+                item.put("eligibilityReason", eligible ? "ELIGIBLE" : "INELIGIBLE_PREFERENCE_OR_CONSENT");
+                result.add(item);
+            }
+        }
+
+        return result;
     }
 
     // ─── Private helpers ─────────────────────────────────────────────────────────

@@ -5,6 +5,7 @@ import com.mrs.ca.backend.Models.Founder;
 import com.mrs.ca.backend.Models.User;
 import com.mrs.ca.backend.Repositories.FounderRepository;
 import com.mrs.ca.backend.Repositories.UserRepository;
+import com.mrs.ca.backend.dto.CompanyDropdownDto;
 import com.mrs.ca.backend.dto.FounderRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -68,6 +69,75 @@ public class FounderService {
      */
     public List<Founder> getActiveFoundersByCompany(String companyClientId) {
         return founderRepository.findByCompanyClientIdAndActiveTrue(companyClientId);
+    }
+
+    /**
+     * Retrieve all eligible active COMPANY clients for founder association dropdowns.
+     * Only active users classified as COMPANY (excluding admin/employee identities) are returned.
+     * Includes effective company name, contact info, and current founder count.
+     */
+    public List<CompanyDropdownDto> getEligibleCompanies() {
+        List<User> activeCompanies = userRepository.findByActiveTrueAndClientType(ClientType.COMPANY);
+        List<CompanyDropdownDto> result = new java.util.ArrayList<>();
+
+        for (User user : activeCompanies) {
+            String uid = user.getUserId() != null ? user.getUserId().toLowerCase().trim() : "";
+            String role = user.getRole() != null ? user.getRole().toUpperCase().trim() : "USER";
+            // Exclude admin / employee accounts
+            if ("ADMIN".equals(role) || "EMPLOYEE".equals(role) || uid.startsWith("emp") || uid.startsWith("admin")) {
+                continue;
+            }
+
+            long founderCount = founderRepository.countByCompanyClientId(user.getUserId());
+            CompanyDropdownDto dto = new CompanyDropdownDto(
+                    user.getUserId(),
+                    user.getEffectiveCompanyName(),
+                    user.getEffectiveContactPersonName(),
+                    user.getFullName(),
+                    user.getPhone(),
+                    user.getEmail(),
+                    user.getFormationDate(),
+                    user.isActive(),
+                    user.getClientType(),
+                    user.isAnniversaryAutomationEnabled(),
+                    user.isWhatsappConsentGiven(),
+                    founderCount
+            );
+            result.add(dto);
+        }
+
+        result.sort((a, b) -> {
+            String nameA = a.getCompanyName() != null ? a.getCompanyName() : a.getUserId();
+            String nameB = b.getCompanyName() != null ? b.getCompanyName() : b.getUserId();
+            return nameA.compareToIgnoreCase(nameB);
+        });
+
+        return result;
+    }
+
+    /**
+     * Retrieve single company details and validate eligibility for founder registration.
+     */
+    public CompanyDropdownDto getEligibleCompany(String companyClientId) {
+        if (companyClientId == null || companyClientId.isBlank()) {
+            throw new IllegalArgumentException("companyClientId is required");
+        }
+        User user = resolveCompanyClient(companyClientId);
+        long founderCount = founderRepository.countByCompanyClientId(user.getUserId());
+        return new CompanyDropdownDto(
+                user.getUserId(),
+                user.getEffectiveCompanyName(),
+                user.getEffectiveContactPersonName(),
+                user.getFullName(),
+                user.getPhone(),
+                user.getEmail(),
+                user.getFormationDate(),
+                user.isActive(),
+                user.getClientType(),
+                user.isAnniversaryAutomationEnabled(),
+                user.isWhatsappConsentGiven(),
+                founderCount
+        );
     }
 
     // ─── Write operations ────────────────────────────────────────────────────────

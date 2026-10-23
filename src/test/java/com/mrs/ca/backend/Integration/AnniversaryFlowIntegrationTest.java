@@ -45,6 +45,7 @@ class AnniversaryFlowIntegrationTest {
     @Autowired private MockMvc mockMvc;
     @Autowired private UserRepository userRepository;
     @Autowired private AnniversaryNotificationLogRepository logRepository;
+    @Autowired private com.mrs.ca.backend.Repositories.FounderRepository founderRepository;
     @Autowired private JwtUtil jwtUtil;
 
     @MockitoBean private RestTemplate restTemplate;
@@ -61,6 +62,7 @@ class AnniversaryFlowIntegrationTest {
     void setup() {
         userRepository.deleteAll();
         logRepository.deleteAll();
+        founderRepository.deleteAll();
 
         // Configure default mock response for Meta WhatsApp Cloud API template dispatches
         WhatsAppMessageResponse mockResponse = new WhatsAppMessageResponse();
@@ -472,5 +474,146 @@ class AnniversaryFlowIntegrationTest {
                         .header("Authorization", getAdminToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.[?(@.userId == 'legacy_client_01')]").doesNotExist());
+    }
+
+    @Test
+    @Order(9)
+    @DisplayName("Dropdown: Eligible companies are correctly listed for founders with founder counts")
+    void testEligibleCompaniesDropdownForFounders() throws Exception {
+        User comp1 = new User("c_corp_1", "pass", "Jane Manager", "corp1@test.com", "user");
+        comp1.setClientType(ClientType.COMPANY);
+        comp1.setCompanyName("Global Holdings Pvt Ltd");
+        comp1.setActive(true);
+        userRepository.save(comp1);
+
+        User ind1 = new User("c_ind_1", "pass", "Sole Trader", "ind1@test.com", "user");
+        ind1.setClientType(ClientType.INDIVIDUAL);
+        ind1.setActive(true);
+        userRepository.save(ind1);
+
+        com.mrs.ca.backend.Models.Founder f1 = new com.mrs.ca.backend.Models.Founder();
+        f1.setCompanyClientId("c_corp_1");
+        f1.setFullName("Ravi Founder");
+        f1.setWhatsappNumber("919876543210");
+        f1.setActive(true);
+        founderRepository.save(f1);
+
+        // Test GET /api/admin/founders/companies
+        mockMvc.perform(get("/api/admin/founders/companies")
+                        .header("Authorization", getAdminToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.[?(@.userId == 'c_corp_1')].companyName").value("Global Holdings Pvt Ltd"))
+                .andExpect(jsonPath("$.[?(@.userId == 'c_corp_1')].founderCount").value(1))
+                .andExpect(jsonPath("$.[?(@.userId == 'c_ind_1')]").doesNotExist());
+
+        // Test GET /api/admin/companies alias
+        mockMvc.perform(get("/api/admin/companies")
+                        .header("Authorization", getAdminToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.[?(@.userId == 'c_corp_1')].companyName").value("Global Holdings Pvt Ltd"));
+    }
+
+    @Test
+    @Order(10)
+    @DisplayName("Zero UTC shift: LocalDate is serialized and deserialized as exact pure date without offset shift")
+    void testZeroUtcShiftLocalDatePersistence() {
+        LocalDate exactDate = LocalDate.of(2021, 5, 1);
+        User user = new User("date_test_client", "pass", "Mr Date", "date@test.com", "user");
+        user.setFormationDate(exactDate);
+        userRepository.save(user);
+
+        Optional<User> reloaded = userRepository.findByUserId("date_test_client");
+        assertThat(reloaded).isPresent();
+        assertThat(reloaded.get().getFormationDate()).isEqualTo(exactDate);
+        assertThat(reloaded.get().getFormationMonth()).isEqualTo(5);
+        assertThat(reloaded.get().getFormationDay()).isEqualTo(1);
+    }
+
+    @Test
+    @Order(11)
+    @DisplayName("Preview endpoint: Evaluates anniversary candidates without dispatching messages or writing logs")
+    void testAnniversaryPreviewEndpoint() throws Exception {
+        LocalDate targetDate = LocalDate.of(2026, 10, 10);
+        User comp = new User("c_preview_1", "pass", "Director Bob", "bob@test.com", "user");
+        comp.setClientType(ClientType.COMPANY);
+        comp.setCompanyName("Preview Tech Ltd");
+        comp.setFormationDate(LocalDate.of(2020, 10, 10));
+        comp.setActive(true);
+        comp.setAnniversaryAutomationEnabled(true);
+        comp.setPhone("919876543210");
+        userRepository.save(comp);
+
+        long logsBefore = logRepository.count();
+
+        mockMvc.perform(get("/api/admin/anniversary/preview?date=2026-10-10")
+                        .header("Authorization", getAdminToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.[?(@.userId == 'c_preview_1')].companyName").value("Preview Tech Ltd"))
+                .andExpect(jsonPath("$.[?(@.userId == 'c_preview_1')].yearsCompleted").value(6));
+
+        long logsAfter = logRepository.count();
+        assertThat(logsAfter).isEqualTo(logsBefore);
+    }
+
+    @Test
+    @Order(12)
+    @DisplayName("Scheduler status and external trigger: Protected endpoint runs successfully with secret header")
+    void testSchedulerStatusAndExternalTriggerEndpoint() throws Exception {
+        // 1. Rejected without secret
+        mockMvc.perform(post("/api/scheduler/daily-greetings"))
+                .andExpect(status().isUnauthorized());
+
+        // 2. Rejected with bad secret
+        mockMvc.perform(post("/api/scheduler/daily-greetings")
+                        .header("X-Scheduler-Secret", "bad_secret"))
+                .andExpect(status().isUnauthorized());
+
+        // 3. Accepted with valid secret header
+        mockMvc.perform(post("/api/scheduler/daily-greetings")
+                        .header("X-Scheduler-Secret", "mrsco_scheduler_secret_2026"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("SUCCESS"))
+                .andExpect(jsonPath("$.anniversarySummary").exists())
+                .andExpect(jsonPath("$.birthdaySummary").exists());
+
+        // 4. Status endpoint
+        mockMvc.perform(get("/api/scheduler/status")
+                        .header("X-Scheduler-Secret", "mrsco_scheduler_secret_2026"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.anniversary").exists())
+                .andExpect(jsonPath("$.birthday").exists());
+    }
+
+    @Test
+    @Order(13)
+    @DisplayName("Quick toggle: PATCH /api/admin/anniversary/clients/{userId}/automation toggles status and rejects INDIVIDUAL")
+    void testAutomationTogglePatchEndpoint() throws Exception {
+        User comp = new User("toggle_comp", "pass", "Lead", "comp@toggle.com", "user");
+        comp.setClientType(ClientType.COMPANY);
+        comp.setAnniversaryAutomationEnabled(false);
+        userRepository.save(comp);
+
+        User ind = new User("toggle_ind", "pass", "Sole", "ind@toggle.com", "user");
+        ind.setClientType(ClientType.INDIVIDUAL);
+        ind.setAnniversaryAutomationEnabled(false);
+        userRepository.save(ind);
+
+        // Toggle company to true
+        mockMvc.perform(patch("/api/admin/anniversary/clients/toggle_comp/automation")
+                        .header("Authorization", getAdminToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"enabled\": true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.anniversaryAutomationEnabled").value(true));
+
+        assertThat(userRepository.findByUserId("toggle_comp").get().isAnniversaryAutomationEnabled()).isTrue();
+
+        // Reject individual toggle to true
+        mockMvc.perform(patch("/api/admin/anniversary/clients/toggle_ind/automation")
+                        .header("Authorization", getAdminToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"enabled\": true}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("Anniversary automation cannot be enabled for INDIVIDUAL clients"));
     }
 }

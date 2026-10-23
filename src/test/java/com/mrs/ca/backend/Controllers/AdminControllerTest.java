@@ -30,6 +30,8 @@ import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+import com.mrs.ca.backend.Services.FounderService;
+
 @WebMvcTest(AdminController.class)
 @Import({SecurityConfig.class, JwtAuthFilter.class, JwtUtil.class})
 @WithMockUser(roles = "ADMIN")
@@ -39,6 +41,7 @@ class AdminControllerTest {
     @MockitoBean private AdminService adminService;
     @MockitoBean private QueryService queryService;
     @MockitoBean private WhatsAppService whatsAppService;
+    @MockitoBean private FounderService founderService;
     @MockitoBean private MongoMappingContext mongoMappingContext;
 
     // ===================== POST /api/admin/users =====================
@@ -584,5 +587,24 @@ class AdminControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.queryId").value("q123"))
                 .andExpect(jsonPath("$.status").value("RESOLVED"));
+    }
+
+    // ===================== GET /api/admin/companies =====================
+
+    @Test
+    @DisplayName("GET /api/admin/companies — 200 on success returning eligible companies")
+    void getEligibleCompanies_success() throws Exception {
+        com.mrs.ca.backend.dto.CompanyDropdownDto dto = new com.mrs.ca.backend.dto.CompanyDropdownDto(
+                "comp1", "Acme Corp", "Alice", "Alice Manager",
+                "9876543210", "acme@test.com", java.time.LocalDate.of(2020, 1, 1),
+                true, com.mrs.ca.backend.Models.ClientType.COMPANY, true, true, 2L
+        );
+        when(founderService.getEligibleCompanies()).thenReturn(List.of(dto));
+
+        mockMvc.perform(get("/api/admin/companies"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].companyId").value("comp1"))
+                .andExpect(jsonPath("$[0].companyName").value("Acme Corp"))
+                .andExpect(jsonPath("$[0].founderCount").value(2));
     }
 }

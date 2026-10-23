@@ -47,11 +47,11 @@ class AnniversaryMatchingServiceTest {
     }
 
     @Test
-    void testCannotCelebrateOnDayOfFormationOrBefore() {
+    void testAnniversaryDatedTodayMatchesAndBeforeFormationDateFails() {
         LocalDate formationDate = LocalDate.of(2026, 10, 10);
 
-        // Day of formation
-        assertThat(matchingService.isAnniversaryToday(formationDate, LocalDate.of(2026, 10, 10))).isFalse();
+        // Day of formation / anniversary dated today matches
+        assertThat(matchingService.isAnniversaryToday(formationDate, LocalDate.of(2026, 10, 10))).isTrue();
 
         // Before formation date
         assertThat(matchingService.isAnniversaryToday(formationDate, LocalDate.of(2025, 10, 10))).isFalse();

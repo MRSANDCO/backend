@@ -19,6 +19,12 @@ public interface FounderRepository extends MongoRepository<Founder, String> {
     /** Active founders linked to a company client. */
     List<Founder> findByCompanyClientIdAndActiveTrue(String companyClientId);
 
+    /** Count founders linked to a company client. */
+    long countByCompanyClientId(String companyClientId);
+
+    /** Count active founders linked to a company client. */
+    long countByCompanyClientIdAndActiveTrue(String companyClientId);
+
     /**
      * Efficient birthday-day scan. Called by the scheduler after pre-filtering by month+day.
      * Returns only active founders whose greeting is enabled and consent has been given.
@@ -27,6 +33,9 @@ public interface FounderRepository extends MongoRepository<Founder, String> {
             int birthdayMonth, int birthdayDay);
 
     List<Founder> findByBirthdayMonthAndBirthdayDayAndActiveTrueAndBirthdayGreetingEnabledTrue(
+            int birthdayMonth, int birthdayDay);
+
+    List<Founder> findByBirthdayMonthAndBirthdayDayAndActiveTrue(
             int birthdayMonth, int birthdayDay);
 
     /**

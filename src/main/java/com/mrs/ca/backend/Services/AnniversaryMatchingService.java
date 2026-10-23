@@ -47,8 +47,8 @@ public class AnniversaryMatchingService {
             return false;
         }
 
-        // Company cannot celebrate anniversary before or on the very day of its formation
-        if (targetDate.isBefore(formationDate) || targetDate.isEqual(formationDate)) {
+        // Company cannot celebrate anniversary before its formation date
+        if (targetDate.isBefore(formationDate)) {
             return false;
         }
 

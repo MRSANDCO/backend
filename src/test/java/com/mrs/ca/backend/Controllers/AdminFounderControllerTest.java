@@ -64,6 +64,9 @@ class AdminFounderControllerTest {
     @BeforeEach
     void setUp() {
         lenient().when(birthdayConfig.isRequireExplicitConsent()).thenReturn(true);
+        lenient().when(birthdayConfig.getZoneId()).thenReturn(java.time.ZoneId.of("Asia/Kolkata"));
+        lenient().when(birthdayConfig.getSchedulerCron()).thenReturn("0 0 9 * * *");
+        lenient().when(schedulerService.getCurrentBusinessDate()).thenReturn(LocalDate.of(2026, 10, 10));
         controller = new AdminFounderController(
                 founderService,
                 founderRepository,
@@ -265,5 +268,59 @@ class AdminFounderControllerTest {
         Map<?, ?> body = (Map<?, ?>) response.getBody();
         assertThat(body.get("status")).isEqualTo("FAILED");
         assertThat(body.get("errorCode")).isEqualTo("100");
+    }
+
+    @Test
+    void getEligibleCompanies_returnsList() {
+        com.mrs.ca.backend.dto.CompanyDropdownDto dto = new com.mrs.ca.backend.dto.CompanyDropdownDto(
+                "comp1", "Acme Corp", "Alice", "Alice Manager",
+                "9876543210", "acme@test.com", LocalDate.of(2020, 1, 1),
+                true, com.mrs.ca.backend.Models.ClientType.COMPANY, true, true, 1L
+        );
+        when(founderService.getEligibleCompanies()).thenReturn(List.of(dto));
+
+        ResponseEntity<List<com.mrs.ca.backend.dto.CompanyDropdownDto>> res = controller.getEligibleCompanies();
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(res.getBody()).hasSize(1);
+        assertThat(res.getBody().get(0).getCompanyName()).isEqualTo("Acme Corp");
+    }
+
+    @Test
+    void getEligibleCompany_found() {
+        com.mrs.ca.backend.dto.CompanyDropdownDto dto = new com.mrs.ca.backend.dto.CompanyDropdownDto(
+                "comp1", "Acme Corp", "Alice", "Alice Manager",
+                "9876543210", "acme@test.com", LocalDate.of(2020, 1, 1),
+                true, com.mrs.ca.backend.Models.ClientType.COMPANY, true, true, 1L
+        );
+        when(founderService.getEligibleCompany("comp1")).thenReturn(dto);
+
+        ResponseEntity<?> res = controller.getEligibleCompany("comp1");
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    @Test
+    void previewBirthdayGreetings_returnsList() {
+        when(schedulerService.getCurrentBusinessDate()).thenReturn(LocalDate.of(2026, 10, 10));
+        when(schedulerService.previewBirthdayGreetings(LocalDate.of(2026, 10, 10))).thenReturn(List.of(
+                Map.of("founderId", "f-1", "fullName", "Ravi Shankar")
+        ));
+
+        ResponseEntity<?> res = controller.previewBirthdayGreetings(null);
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<?, ?> body = (Map<?, ?>) res.getBody();
+        assertThat(body.get("candidates")).isInstanceOf(List.class);
+        List<?> list = (List<?>) body.get("candidates");
+        assertThat(list).hasSize(1);
+    }
+
+    @Test
+    void getBirthdaySchedulerStatus_returnsStatus() {
+        when(schedulerService.getLastExecutionStatus()).thenReturn("COMPLETED_SUCCESSFULLY");
+        when(schedulerService.getRecentErrors()).thenReturn(List.of());
+
+        ResponseEntity<?> res = controller.getBirthdaySchedulerStatus();
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<?, ?> body = (Map<?, ?>) res.getBody();
+        assertThat(body.get("lastExecutionStatus")).isEqualTo("COMPLETED_SUCCESSFULLY");
     }
 }

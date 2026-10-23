@@ -60,6 +60,10 @@ public class AnniversaryGreetingService {
         this.mongoTemplate = mongoTemplate;
     }
 
+    public AnniversaryEligibilityService getEligibilityService() {
+        return eligibilityService;
+    }
+
     /**
      * Process an anniversary greeting for a single client on the target business date.
      */

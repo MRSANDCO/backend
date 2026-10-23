@@ -56,6 +56,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/whatsapp/**").permitAll()
                 .requestMatchers("/error").permitAll()
                 .requestMatchers("/health").permitAll()
+                .requestMatchers("/api/scheduler/**").permitAll()
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 .requestMatchers("/api/user/**").hasAnyRole("USER", "ADMIN")
                 .requestMatchers("/api/employee/**").hasRole("EMPLOYEE")

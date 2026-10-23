@@ -73,6 +73,12 @@ public class User {
     @Field("formation_date")
     private java.time.LocalDate formationDate;
 
+    @Field("formation_month")
+    private Integer formationMonth;
+
+    @Field("formation_day")
+    private Integer formationDay;
+
     @Field("anniversary_automation_enabled")
     private boolean anniversaryAutomationEnabled = false;
 
@@ -233,6 +239,29 @@ public class User {
 
     public void setFormationDate(java.time.LocalDate formationDate) {
         this.formationDate = formationDate;
+        if (formationDate != null) {
+            this.formationMonth = formationDate.getMonthValue();
+            this.formationDay = formationDate.getDayOfMonth();
+        } else {
+            this.formationMonth = null;
+            this.formationDay = null;
+        }
+    }
+
+    public Integer getFormationMonth() {
+        return formationMonth;
+    }
+
+    public void setFormationMonth(Integer formationMonth) {
+        this.formationMonth = formationMonth;
+    }
+
+    public Integer getFormationDay() {
+        return formationDay;
+    }
+
+    public void setFormationDay(Integer formationDay) {
+        this.formationDay = formationDay;
     }
 
     public boolean isAnniversaryAutomationEnabled() {

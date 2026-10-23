@@ -77,7 +77,8 @@ public class AdminAnniversaryController {
         List<AnniversaryClientDto> result = new ArrayList<>();
 
         for (User user : clientsWithFormationDate) {
-            if (user.getClientType() == ClientType.COMPANY && matchingService.isAnniversaryToday(user.getFormationDate(), today)) {
+            boolean isCompanyCandidate = user.getClientType() == ClientType.COMPANY || user.getClientType() == null;
+            if (isCompanyCandidate && matchingService.isAnniversaryToday(user.getFormationDate(), today)) {
                 result.add(mapToDto(user, today));
             }
         }
@@ -101,7 +102,8 @@ public class AdminAnniversaryController {
         for (int i = 1; i <= clampedDays; i++) {
             LocalDate futureDate = today.plusDays(i);
             for (User user : clientsWithFormationDate) {
-                if (user.getClientType() == ClientType.COMPANY && matchingService.isAnniversaryToday(user.getFormationDate(), futureDate)) {
+                boolean isCompanyCandidate = user.getClientType() == ClientType.COMPANY || user.getClientType() == null;
+                if (isCompanyCandidate && matchingService.isAnniversaryToday(user.getFormationDate(), futureDate)) {
                     result.add(mapToDto(user, futureDate));
                 }
             }
@@ -216,6 +218,79 @@ public class AdminAnniversaryController {
         return ResponseEntity.ok(Map.of(
                 "message", "Anniversary settings updated successfully",
                 "client", mapToDto(user, matchingService.getCurrentBusinessDate())
+        ));
+    }
+
+    /**
+     * Quick toggle for anniversary automation for a client.
+     * PATCH /api/admin/anniversary/clients/{userId}/automation
+     */
+    @PatchMapping("/clients/{userId}/automation")
+    public ResponseEntity<?> toggleAnniversaryAutomation(
+            @PathVariable String userId,
+            @RequestBody(required = false) Map<String, Object> body,
+            @RequestParam(required = false) Boolean enabled) {
+
+        Optional<User> userOpt = userRepository.findByUserId(userId);
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("error", "User '" + userId + "' not found"));
+        }
+
+        User user = userOpt.get();
+        Boolean targetState = enabled;
+        if (targetState == null && body != null) {
+            if (body.containsKey("enabled")) {
+                targetState = Boolean.valueOf(String.valueOf(body.get("enabled")));
+            } else if (body.containsKey("anniversaryAutomationEnabled")) {
+                targetState = Boolean.valueOf(String.valueOf(body.get("anniversaryAutomationEnabled")));
+            }
+        }
+        if (targetState == null) {
+            targetState = !user.isAnniversaryAutomationEnabled();
+        }
+
+        if (Boolean.TRUE.equals(targetState) && user.getClientType() == ClientType.INDIVIDUAL) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Anniversary automation cannot be enabled for INDIVIDUAL clients"));
+        }
+
+        user.setAnniversaryAutomationEnabled(targetState);
+        user.setUpdatedAt(LocalDateTime.now());
+        userRepository.save(user);
+
+        log.info("[ADMIN-ANNIVERSARY] Toggled anniversary automation for client '{}' to {}", userId, targetState);
+
+        return ResponseEntity.ok(Map.of(
+                "message", "Anniversary automation status updated",
+                "userId", user.getUserId(),
+                "anniversaryAutomationEnabled", user.isAnniversaryAutomationEnabled()
+        ));
+    }
+
+    /**
+     * Preview companies celebrating formation anniversaries on the specified date
+     * without sending any WhatsApp messages or creating log records.
+     * GET /api/admin/anniversary/preview?date=YYYY-MM-DD
+     */
+    @GetMapping("/preview")
+    public ResponseEntity<?> previewAnniversaries(@RequestParam(value = "date", required = false) String dateStr) {
+        LocalDate date = (dateStr != null && !dateStr.isBlank())
+                ? LocalDate.parse(dateStr)
+                : matchingService.getCurrentBusinessDate();
+        return ResponseEntity.ok(schedulerService.previewAnniversaries(date));
+    }
+
+    /**
+     * Retrieve status and execution metrics for the anniversary scheduler.
+     * GET /api/admin/anniversary/scheduler/status
+     */
+    @GetMapping("/scheduler/status")
+    public ResponseEntity<?> getSchedulerStatus() {
+        return ResponseEntity.ok(Map.of(
+                "lastExecutionTime", schedulerService.getLastExecutionTime() != null ? schedulerService.getLastExecutionTime().toString() : "NEVER",
+                "lastExecutionStatus", schedulerService.getLastExecutionStatus(),
+                "lastExecutionSummary", schedulerService.getLastExecutionSummary() != null ? schedulerService.getLastExecutionSummary() : Map.of(),
+                "recentErrors", schedulerService.getRecentErrors()
         ));
     }
 
@@ -350,7 +425,8 @@ public class AdminAnniversaryController {
         dto.setBirthdayGreetingEnabled(user.isBirthdayGreetingEnabled());
         dto.setWhatsappConsentGiven(user.isWhatsappConsentGiven());
         dto.setYearsCompleted(matchingService.calculateYearsCompleted(user.getFormationDate(), referenceDate));
-        dto.setAnniversaryToday(user.getClientType() == ClientType.COMPANY && matchingService.isAnniversaryToday(user.getFormationDate(), referenceDate));
+        boolean isCompanyCandidate = user.getClientType() == ClientType.COMPANY || user.getClientType() == null;
+        dto.setAnniversaryToday(isCompanyCandidate && matchingService.isAnniversaryToday(user.getFormationDate(), referenceDate));
         dto.setBirthdayToday(user.getDateOfBirth() != null && matchingService.isAnniversaryToday(user.getDateOfBirth(), referenceDate));
 
         Optional<AnniversaryNotificationLog> logOpt = logRepository.findByClientIdAndAnniversaryYearAndNotificationType(

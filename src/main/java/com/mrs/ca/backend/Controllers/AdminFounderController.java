@@ -10,6 +10,7 @@ import com.mrs.ca.backend.Services.BirthdayGreetingService;
 import com.mrs.ca.backend.Services.BirthdaySchedulerService;
 import com.mrs.ca.backend.Services.FounderService;
 import com.mrs.ca.backend.Services.WhatsAppService;
+import com.mrs.ca.backend.dto.CompanyDropdownDto;
 import com.mrs.ca.backend.dto.FounderRequest;
 import com.mrs.ca.backend.dto.WhatsAppSendResult;
 import org.slf4j.Logger;
@@ -138,6 +139,30 @@ public class AdminFounderController {
             ));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Retrieve eligible COMPANY clients for the "Associated Company / Firm" dropdown.
+     * GET /api/admin/founders/companies
+     * GET /api/admin/founders/eligible-companies
+     */
+    @GetMapping({"/companies", "/eligible-companies"})
+    public ResponseEntity<List<CompanyDropdownDto>> getEligibleCompanies() {
+        return ResponseEntity.ok(founderService.getEligibleCompanies());
+    }
+
+    /**
+     * Retrieve a single eligible company client's details.
+     * GET /api/admin/founders/companies/{companyClientId}
+     */
+    @GetMapping("/companies/{companyClientId}")
+    public ResponseEntity<?> getEligibleCompany(@PathVariable String companyClientId) {
+        try {
+            return ResponseEntity.ok(founderService.getEligibleCompany(companyClientId));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("error", e.getMessage()));
         }
     }
 
@@ -347,14 +372,53 @@ public class AdminFounderController {
      * Get a single birthday notification log entry.
      * GET /api/admin/founders/birthday/history/{id}
      */
-    @GetMapping("/birthday/history/{id}")
-    public ResponseEntity<?> getBirthdayHistoryEntry(@PathVariable String id) {
-        Optional<AnniversaryNotificationLog> logOpt = logRepository.findById(id);
-        if (logOpt.isEmpty()) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(Map.of("error", "Notification log '" + id + "' not found"));
+    /**
+     * Safe preview of founders/individual clients celebrating birthdays on the specified business date.
+     * Does NOT send any WhatsApp messages or modify database state.
+     * GET /api/admin/founders/birthday/preview?date=YYYY-MM-DD
+     */
+    @GetMapping("/birthday/preview")
+    public ResponseEntity<?> previewBirthdayGreetings(@RequestParam(required = false) String date) {
+        LocalDate businessDate;
+        if (date != null && !date.isBlank()) {
+            try {
+                businessDate = LocalDate.parse(date.trim());
+            } catch (DateTimeParseException e) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Invalid date format. Use YYYY-MM-DD."));
+            }
+        } else {
+            businessDate = schedulerService.getCurrentBusinessDate();
         }
-        return ResponseEntity.ok(logOpt.get());
+        return ResponseEntity.ok(Map.of(
+                "previewDate", businessDate.toString(),
+                "candidates", schedulerService.previewBirthdayGreetings(businessDate)
+        ));
+    }
+
+    /**
+     * Retrieve operational scheduler status and recent execution logs for admins.
+     * GET /api/admin/founders/birthday/scheduler/status
+     */
+    @GetMapping("/birthday/scheduler/status")
+    public ResponseEntity<?> getBirthdaySchedulerStatus() {
+        var summary = schedulerService.getLastExecutionSummary();
+        return ResponseEntity.ok(Map.of(
+                "schedulerConfigEnabled", birthdayConfig.isSchedulerEnabled(),
+                "schedulerCron", birthdayConfig.getSchedulerCron(),
+                "schedulerTimezone", birthdayConfig.getZoneId().getId(),
+                "currentBusinessDate", schedulerService.getCurrentBusinessDate().toString(),
+                "lastExecutionTime", schedulerService.getLastExecutionTime() != null ? schedulerService.getLastExecutionTime().toString() : "NEVER",
+                "lastExecutionStatus", schedulerService.getLastExecutionStatus(),
+                "lastSummary", summary != null ? Map.of(
+                        "executionDate", summary.getExecutionDate().toString(),
+                        "foundersScanned", summary.getFoundersScanned(),
+                        "eligible", summary.getEligible(),
+                        "dispatched", summary.getDispatched(),
+                        "skippedOrFailed", summary.getSkippedOrFailed(),
+                        "durationMillis", summary.getDurationMillis()
+                ) : Map.of(),
+                "recentErrors", schedulerService.getRecentErrors()
+        ));
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
