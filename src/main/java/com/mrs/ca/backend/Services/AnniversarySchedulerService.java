@@ -188,7 +188,7 @@ public class AnniversarySchedulerService {
 
         for (User user : clientsWithFormationDate) {
             boolean isCompanyCandidate = user.getClientType() == ClientType.COMPANY ||
-                    (user.getClientType() == null && user.getRole().equals("USER"));
+                    (user.getClientType() == null && "USER".equals(user.getRole()));
             if (isCompanyCandidate && matchingService.isAnniversaryToday(user.getFormationDate(), businessDate)) {
                 java.util.Map<String, Object> item = new java.util.LinkedHashMap<>();
                 item.put("userId", user.getUserId());

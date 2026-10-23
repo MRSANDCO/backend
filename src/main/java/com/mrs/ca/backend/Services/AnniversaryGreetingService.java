@@ -350,7 +350,8 @@ public class AnniversaryGreetingService {
 
                 User client = userOpt.get();
                 if (!client.isActive() || client.getClientType() != ClientType.COMPANY ||
-                        !client.isAnniversaryAutomationEnabled() || !client.isWhatsappConsentGiven()) {
+                        !client.isAnniversaryAutomationEnabled() ||
+                        (anniversaryConfig.isRequireExplicitConsent() && !client.isWhatsappConsentGiven())) {
                     markPermanentFailure(item.getId(), "CONSENT_WITHDRAWN_OR_INACTIVE_OR_NOT_COMPANY",
                             "Client opted out, inactive, not a company, or automation disabled before retry");
                     continue;
